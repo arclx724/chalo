@@ -762,9 +762,10 @@ async def imdb_inl(_, query):
             sop = BeautifulSoup(resp, "lxml")
             r_json = await _get_imdb_details_graphql(movie)
             if not r_json:
-                r_json = json.loads(
-                    sop.find("script", attrs={"type": "application/ld+json"}).contents[0]
-                )
+                script_tag = sop.find("script", attrs={"type": "application/ld+json"})
+                if not script_tag or not script_tag.contents:
+                    raise ValueError("IMDb ld+json not found")
+                r_json = json.loads(script_tag.contents[0])
             ott = await search_jw(r_json.get("alternateName") or r_json["name"], "ID")
             template = await get_imdb_template(query.from_user.id)
             imdb_by = await get_imdb_by(query.from_user.id) or f"@{app.me.username}"

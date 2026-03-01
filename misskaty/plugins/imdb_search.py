@@ -64,6 +64,13 @@ IMDB_GRAPHQL_HEADERS = {
     "accept-language": "en-US,en;q=0.9",
     "content-type": "application/json",
     "origin": "https://www.imdb.com",
+    "referer": "https://www.imdb.com/",
+    "priority": "u=1, i",
+    "user-agent": (
+        "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/137.0.0.0 Mobile Safari/537.36"
+    ),
 }
 IMDB_TITLE_QUERY = """query GetTitle($id: ID!) {
   title(id: $id) {
@@ -88,18 +95,27 @@ IMDB_TITLE_QUERY = """query GetTitle($id: ID!) {
 
 
 async def _get_imdb_details_graphql(title_id: str):
-    response = await fetch.post(
-        IMDB_GRAPHQL_URL,
-        headers=IMDB_GRAPHQL_HEADERS,
-        json={
-            "query": IMDB_TITLE_QUERY,
-            "operationName": "GetTitle",
-            "variables": {"id": title_id},
-        },
-    )
-    response.raise_for_status()
-    payload = response.json().get("data", {}).get("title") or {}
+    title_id = title_id if str(title_id).startswith("tt") else f"tt{title_id}"
+    try:
+        response = await fetch.post(
+            IMDB_GRAPHQL_URL,
+            headers=IMDB_GRAPHQL_HEADERS,
+            json={
+                "query": IMDB_TITLE_QUERY,
+                "operationName": "GetTitle",
+                "variables": {"id": title_id},
+            },
+        )
+        response.raise_for_status()
+        body = response.json()
+    except Exception as err:
+        LOGGER.warning(f"IMDb GraphQL request failed for {title_id}: {err}")
+        return {}
+
+    payload = body.get("data", {}).get("title") or {}
     if not payload:
+        if body.get("errors"):
+            LOGGER.warning(f"IMDb GraphQL returned errors for {title_id}: {body.get('errors')}")
         return {}
 
     principal_credits = payload.get("principalCredits") or []
@@ -136,7 +152,7 @@ async def _get_imdb_details_graphql(title_id: str):
             keywords.append(keyword)
 
     ratings = payload.get("ratingsSummary") or {}
-    trailer_urls = ((payload.get("latestTrailer") or {}).get("playbackURLs") or [])
+    trailer_urls = (payload.get("latestTrailer") or {}).get("playbackURLs") or []
     return {
         "name": (payload.get("titleText") or {}).get("text"),
         "alternateName": (payload.get("originalTitleText") or {}).get("text"),
@@ -150,7 +166,11 @@ async def _get_imdb_details_graphql(title_id: str):
         "genre": genres,
         "description": ((payload.get("plot") or {}).get("plotText") or {}).get("plainText"),
         "image": (payload.get("primaryImage") or {}).get("url"),
-        "trailer": {"url": trailer_urls[0].get("url")} if trailer_urls and trailer_urls[0].get("url") else None,
+        "trailer": (
+            {"url": trailer_urls[0].get("url")}
+            if trailer_urls and trailer_urls[0].get("url")
+            else None
+        ),
         "keywords": ", ".join(keywords),
         "director": _people("Director"),
         "creator": _people("Writers", "Writer", "Creator"),
@@ -932,9 +952,10 @@ async def imdb_id_callback(self: Client, query: CallbackQuery):
             sop = BeautifulSoup(resp, "lxml")
             r_json = await _get_imdb_details_graphql(f"tt{movie}")
             if not r_json:
-                r_json = json.loads(
-                    sop.find("script", attrs={"type": "application/ld+json"}).contents[0]
-                )
+                script_tag = sop.find("script", attrs={"type": "application/ld+json"})
+                if not script_tag or not script_tag.contents:
+                    raise ValueError("IMDb ld+json not found")
+                r_json = json.loads(script_tag.contents[0])
             ott = await search_jw(
                 r_json.get("alternateName") or r_json.get("name"), "ID"
             )
@@ -1329,7 +1350,7 @@ async def imdb_id_callback(self: Client, query: CallbackQuery):
             await query.message.edit(
                 f"HTTP Exception for IMDB Search - <code>{exc}</code>"
             )
-        except AttributeError:
+        except (AttributeError, ValueError):
             await query.message.edit("Maaf, gagal mendapatkan info data dari IMDB.")
         except (MessageNotModified, MessageIdInvalid):
             pass
@@ -1349,9 +1370,10 @@ async def imdb_en_callback(self: Client, query: CallbackQuery):
             sop = BeautifulSoup(resp, "lxml")
             r_json = await _get_imdb_details_graphql(f"tt{movie}")
             if not r_json:
-                r_json = json.loads(
-                    sop.find("script", attrs={"type": "application/ld+json"}).contents[0]
-                )
+                script_tag = sop.find("script", attrs={"type": "application/ld+json"})
+                if not script_tag or not script_tag.contents:
+                    raise ValueError("IMDb ld+json not found")
+                r_json = json.loads(script_tag.contents[0])
             ott = await search_jw(
                 r_json.get("alternateName") or r_json.get("name"), "US"
             )
@@ -1742,7 +1764,7 @@ async def imdb_en_callback(self: Client, query: CallbackQuery):
             await query.message.edit(
                 f"HTTP Exception for IMDB Search - <code>{exc}</code>"
             )
-        except AttributeError:
+        except (AttributeError, ValueError):
             await query.message.edit("Sorry, failed getting data from IMDB.")
         except (MessageNotModified, MessageIdInvalid):
             pass
