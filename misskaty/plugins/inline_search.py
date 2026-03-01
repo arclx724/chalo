@@ -28,6 +28,11 @@ from database.imdb_db import get_imdb_by, get_imdb_layout_fields, get_imdb_templ
 from misskaty import BOT_USERNAME, app, user
 from misskaty.helper import GENRES_EMOJI, fetch, gtranslate, post_to_telegraph, search_jw
 from misskaty.plugins.dev import shell_exec
+from misskaty.plugins.imdb_search import (
+    _fetch_imdb_title_details,
+    _format_runtime,
+    _graphql_to_legacy_json,
+)
 from misskaty.plugins.misc_tools import calc_btn
 from misskaty.vars import USER_SESSION
 from utils import demoji
@@ -756,11 +761,8 @@ async def imdb_inl(_, query):
                     disable_web_page_preview=True,
                 )
             url = f"https://m.imdb.com/title/{movie}/"
-            resp = await fetch.get(url)
-            sop = BeautifulSoup(resp, "lxml")
-            r_json = json.loads(
-                sop.find("script", attrs={"type": "application/ld+json"}).contents[0]
-            )
+            title_data = await _fetch_imdb_title_details(movie.replace("tt", ""))
+            r_json = _graphql_to_legacy_json(title_data)
             ott = await search_jw(r_json.get("alternateName") or r_json["name"], "ID")
             template = await get_imdb_template(query.from_user.id)
             imdb_by = await get_imdb_by(query.from_user.id) or f"@{app.me.username}"
@@ -782,11 +784,7 @@ async def imdb_inl(_, query):
             rilis = "-"
             rilis_url = ""
             summary = ""
-            tahun = (
-                re.findall(r"\d{4}\W\d{4}|\d{4}-?", sop.title.text)[0]
-                if re.findall(r"\d{4}\W\d{4}|\d{4}-?", sop.title.text)
-                else "N/A"
-            )
+            tahun = str((title_data.get("releaseYear") or {}).get("year") or "N/A")
             res_str += f"<b>📹 Judul:</b> <a href=\"{url}\">{r_json['name']} [{tahun}]</a> (<code>{typee}</code>)\n"
             if r_json.get("alternateName"):
                 res_str += (
@@ -794,12 +792,8 @@ async def imdb_inl(_, query):
                 )
             else:
                 res_str += "\n"
-            if durasi := sop.select('li[data-testid="title-techspec_runtime"]'):
-                durasi = (
-                    durasi[0]
-                    .find(class_="ipc-metadata-list-item__content-container")
-                    .text
-                )
+            if runtime_seconds := (title_data.get("runtime") or {}).get("seconds"):
+                durasi = _format_runtime(runtime_seconds)
                 duration_raw = durasi
                 duration_text = (await gtranslate(durasi, "auto", "id")).text
                 res_str += f"<b>Durasi:</b> <code>{duration_text}</code>\n"
@@ -808,17 +802,9 @@ async def imdb_inl(_, query):
                 res_str += f"<b>Kategori:</b> <code>{r_json['contentRating']}</code> \n"
             if r_json.get("aggregateRating"):
                 res_str += f"<b>Peringkat:</b> <code>{r_json['aggregateRating']['ratingValue']}⭐️ dari {r_json['aggregateRating']['ratingCount']} pengguna</code> \n"
-            if release := sop.select('li[data-testid="title-details-releasedate"]'):
-                rilis = (
-                    release[0]
-                    .find(
-                        class_="ipc-metadata-list-item__list-content-item ipc-metadata-list-item__list-content-item--link"
-                    )
-                    .text
-                )
-                rilis_url = release[0].find(
-                    class_="ipc-metadata-list-item__list-content-item ipc-metadata-list-item__list-content-item--link"
-                )["href"]
+            if (release := title_data.get("releaseYear")) and release.get("year"):
+                rilis = str(release["year"])
+                rilis_url = f"/title/{movie}/releaseinfo"
                 release_date_text = rilis or "-"
                 res_str += f"<b>Rilis:</b> <a href=\"https://www.imdb.com{rilis_url}\">{rilis}</a>\n"
             genre_list = []
@@ -840,14 +826,17 @@ async def imdb_inl(_, query):
             else:
                 genre_text = genre_text[:-2]
             country_list = []
-            if negara := sop.select('li[data-testid="title-details-origin"]'):
-                country_items = negara[0].findAll(
-                    class_="ipc-metadata-list-item__list-content-item ipc-metadata-list-item__list-content-item--link"
-                )
-                country_list = [country.text for country in country_items]
-                country_text = "".join(
-                    f"{demoji(country.text)} #{country.text.replace(' ', '_').replace('-', '_')}, "
+            if country_items := (title_data.get("countriesOfOrigin") or {}).get(
+                "countries", []
+            ):
+                country_list = [
+                    country.get("text")
                     for country in country_items
+                    if country and country.get("text")
+                ]
+                country_text = "".join(
+                    f"{demoji(country)} #{country.replace(' ', '_').replace('-', '_')}, "
+                    for country in country_list
                 )
                 res_str += f"<b>Negara:</b> {country_text[:-2]}\n"
             if country_text == "-":
@@ -855,14 +844,15 @@ async def imdb_inl(_, query):
             else:
                 country_text = country_text[:-2]
             language_list = []
-            if bahasa := sop.select('li[data-testid="title-details-languages"]'):
-                language_items = bahasa[0].findAll(
-                    class_="ipc-metadata-list-item__list-content-item ipc-metadata-list-item__list-content-item--link"
-                )
-                language_list = [lang.text for lang in language_items]
+            if language_items := (title_data.get("spokenLanguages") or {}).get(
+                "spokenLanguages", []
+            ):
+                language_list = [
+                    lang.get("text") for lang in language_items if lang and lang.get("text")
+                ]
                 language_text = "".join(
-                    f"#{lang.text.replace(' ', '_').replace('-', '_')}, "
-                    for lang in language_items
+                    f"#{lang.replace(' ', '_').replace('-', '_')}, "
+                    for lang in language_list
                 )
                 res_str += f"<b>Bahasa:</b> {language_text[:-2]}\n"
             if language_text == "-":
@@ -915,12 +905,8 @@ async def imdb_inl(_, query):
                 )
             if keyword_text != "-":
                 keyword_text = keyword_text[:-2]
-            if award := sop.select('li[data-testid="award_information"]'):
-                awards = (
-                    award[0]
-                    .find(class_="ipc-metadata-list-item__list-content-item")
-                    .text
-                )
+            if nominations := (title_data.get("nominations") or {}).get("total"):
+                awards = f"{nominations} nominasi"
                 awards_text = (await gtranslate(awards, "auto", "id")).text or "-"
                 res_str += f"<b>🏆 Penghargaan:</b>\n<blockquote expandable><code>{awards_text}</code></blockquote>\n"
             else:
