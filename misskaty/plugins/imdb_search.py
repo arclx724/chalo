@@ -4,6 +4,7 @@
 # * Copyright ©YasirPedia All rights reserved
 import contextlib
 import html
+import inspect
 import logging
 import re
 import sys
@@ -224,6 +225,13 @@ def _with_html_placeholders(payload: dict) -> dict:
         if isinstance(value, str):
             enriched[f"{key}_html"] = html.escape(value)
     return enriched
+
+
+def _preview_kwargs(is_disabled: bool) -> dict:
+    params = inspect.signature(Client.edit_message_text).parameters
+    if "link_preview_options" in params:
+        return {"link_preview_options": {"is_disabled": is_disabled}}
+    return {"disable_web_page_preview": is_disabled}
 
 
 def render_imdb_template_with_buttons(template: str, payload: dict):
@@ -1268,7 +1276,7 @@ async def imdb_id_callback(self: Client, query: CallbackQuery):
                     res_str,
                     parse_mode=enums.ParseMode.HTML,
                     reply_markup=markup,
-                    disable_web_page_preview=disable_web_preview,
+                    **_preview_kwargs(disable_web_preview),
                 )
             elif thumb := r_json.get("image"):
                 try:
@@ -1300,7 +1308,7 @@ async def imdb_id_callback(self: Client, query: CallbackQuery):
                         res_str,
                         parse_mode=enums.ParseMode.HTML,
                         reply_markup=markup,
-                        disable_web_page_preview=disable_web_preview,
+                        **_preview_kwargs(disable_web_preview),
                     )
                 except Exception as err:
                     LOGGER.error(
@@ -1311,14 +1319,14 @@ async def imdb_id_callback(self: Client, query: CallbackQuery):
                             res_str,
                             parse_mode=enums.ParseMode.HTML,
                             reply_markup=markup,
-                            disable_web_page_preview=disable_web_preview,
+                            **_preview_kwargs(disable_web_preview),
                         )
             else:
                 await query.message.edit_msg(
                     res_str,
                     parse_mode=enums.ParseMode.HTML,
                     reply_markup=markup,
-                    disable_web_page_preview=disable_web_preview,
+                    **_preview_kwargs(disable_web_preview),
                 )
         except httpx.HTTPError as exc:
             await query.message.edit_msg(
@@ -1663,7 +1671,7 @@ async def imdb_en_callback(self: Client, query: CallbackQuery):
                     res_str,
                     parse_mode=enums.ParseMode.HTML,
                     reply_markup=markup,
-                    disable_web_page_preview=disable_web_preview,
+                    **_preview_kwargs(disable_web_preview),
                 )
             elif thumb := r_json.get("image"):
                 try:
@@ -1695,7 +1703,7 @@ async def imdb_en_callback(self: Client, query: CallbackQuery):
                         res_str,
                         parse_mode=enums.ParseMode.HTML,
                         reply_markup=markup,
-                        disable_web_page_preview=disable_web_preview,
+                        **_preview_kwargs(disable_web_preview),
                     )
                 except Exception as err:
                     LOGGER.error(f"Error while displaying IMDB Data. ERROR: {err}")
@@ -1704,14 +1712,14 @@ async def imdb_en_callback(self: Client, query: CallbackQuery):
                             res_str,
                             parse_mode=enums.ParseMode.HTML,
                             reply_markup=markup,
-                            disable_web_page_preview=disable_web_preview,
+                            **_preview_kwargs(disable_web_preview),
                         )
             else:
                 await query.message.edit_msg(
                     res_str,
                     parse_mode=enums.ParseMode.HTML,
                     reply_markup=markup,
-                    disable_web_page_preview=disable_web_preview,
+                    **_preview_kwargs(disable_web_preview),
                 )
         except httpx.HTTPError as exc:
             await query.message.edit_msg(

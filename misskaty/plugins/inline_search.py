@@ -3,6 +3,7 @@
 # * @projectName   MissKatyPyro
 # * Copyright ©YasirPedia All rights reserved
 import html
+import inspect
 import json
 import re
 import traceback
@@ -120,6 +121,13 @@ def _with_html_placeholders(payload: dict) -> dict:
         if isinstance(value, str):
             enriched[f"{key}_html"] = html.escape(value)
     return enriched
+
+
+def _preview_kwargs(is_disabled: bool) -> dict:
+    params = inspect.signature(app.edit_message_text).parameters
+    if "link_preview_options" in params:
+        return {"link_preview_options": {"is_disabled": is_disabled}}
+    return {"disable_web_page_preview": is_disabled}
 
 
 @app.on_inline_query()
@@ -758,7 +766,7 @@ async def imdb_inl(_, query):
                 await query.edit_message_text(
                     "⏳ <i>Permintaan kamu sedang diproses.. </i>",
                     parse_mode=enums.ParseMode.HTML,
-                    disable_web_page_preview=True,
+                    **_preview_kwargs(True),
                 )
             url = f"https://m.imdb.com/title/{movie}/"
             title_data = await _fetch_imdb_title_details(movie.replace("tt", ""))
@@ -1075,7 +1083,7 @@ async def imdb_inl(_, query):
                     res_str,
                     parse_mode=enums.ParseMode.HTML,
                     reply_markup=markup,
-                    disable_web_page_preview=disable_web_preview,
+                    **_preview_kwargs(disable_web_preview),
                 )
         except (MessageNotModified, MessageIdInvalid):
             pass
@@ -1087,7 +1095,7 @@ async def imdb_inl(_, query):
                 await query.edit_message_text(
                     f"<b>ERROR:</b>\n<code>{exc}</code>",
                     parse_mode=enums.ParseMode.HTML,
-                    disable_web_page_preview=True,
+                    **_preview_kwargs(True),
                 )
     else:
         await query.answer("⚠️ Akses Ditolak!", True)
