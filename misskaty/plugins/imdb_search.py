@@ -13,6 +13,7 @@ from urllib.parse import quote_plus
 import httpx
 from pykeyboard import InlineButton, InlineKeyboard
 from pyrogram import Client, enums
+from pyrogram import types as pyro_types
 from pyrogram.errors import (
     ListenerTimeout,
     MediaCaptionTooLong,
@@ -227,7 +228,11 @@ def _with_html_placeholders(payload: dict) -> dict:
 
 
 def _preview_kwargs(is_disabled: bool) -> dict:
-    return {"link_preview_options": {"is_disabled": is_disabled}}
+    return {
+        "link_preview_options": pyro_types.LinkPreviewOptions(
+            is_disabled=is_disabled
+        )
+    }
 
 
 def render_imdb_template_with_buttons(template: str, payload: dict):
