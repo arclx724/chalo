@@ -30,6 +30,7 @@ from misskaty import BOT_USERNAME, app, user
 from misskaty.helper import GENRES_EMOJI, fetch, gtranslate, post_to_telegraph, search_jw
 from misskaty.plugins.dev import shell_exec
 from misskaty.plugins.misc_tools import calc_btn
+from misskaty.plugins.imdb_search import _get_imdb_details_graphql
 from misskaty.vars import USER_SESSION
 from utils import demoji
 
@@ -759,9 +760,11 @@ async def imdb_inl(_, query):
             url = f"https://m.imdb.com/title/{movie}/"
             resp = await fetch.get(url)
             sop = BeautifulSoup(resp, "lxml")
-            r_json = json.loads(
-                sop.find("script", attrs={"type": "application/ld+json"}).contents[0]
-            )
+            r_json = await _get_imdb_details_graphql(movie)
+            if not r_json:
+                r_json = json.loads(
+                    sop.find("script", attrs={"type": "application/ld+json"}).contents[0]
+                )
             ott = await search_jw(r_json.get("alternateName") or r_json["name"], "ID")
             template = await get_imdb_template(query.from_user.id)
             imdb_by = await get_imdb_by(query.from_user.id) or f"@{app.me.username}"

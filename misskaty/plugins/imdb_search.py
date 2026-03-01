@@ -58,6 +58,105 @@ from utils import demoji
 LOGGER = logging.getLogger("MissKaty")
 LIST_CARI = Cache(filename="imdb_cache.db", path="cache", in_memory=False)
 
+IMDB_GRAPHQL_URL = "https://caching.graphql.imdb.com/"
+IMDB_GRAPHQL_HEADERS = {
+    "accept": "application/graphql+json, application/json",
+    "accept-language": "en-US,en;q=0.9",
+    "content-type": "application/json",
+    "origin": "https://www.imdb.com",
+}
+IMDB_TITLE_QUERY = """query GetTitle($id: ID!) {
+  title(id: $id) {
+    id
+    titleText { text }
+    originalTitleText { text }
+    titleType { text }
+    releaseYear { year }
+    ratingsSummary { aggregateRating voteCount }
+    certificate { rating }
+    genres { genres { text } }
+    plot { plotText { plainText } }
+    primaryImage { url }
+    principalCredits {
+      category { text }
+      credits { name { id nameText { text } } }
+    }
+    keywords(first: 20) { edges { node { text } } }
+    latestTrailer { playbackURLs { url } }
+  }
+}"""
+
+
+async def _get_imdb_details_graphql(title_id: str):
+    response = await fetch.post(
+        IMDB_GRAPHQL_URL,
+        headers=IMDB_GRAPHQL_HEADERS,
+        json={
+            "query": IMDB_TITLE_QUERY,
+            "operationName": "GetTitle",
+            "variables": {"id": title_id},
+        },
+    )
+    response.raise_for_status()
+    payload = response.json().get("data", {}).get("title") or {}
+    if not payload:
+        return {}
+
+    principal_credits = payload.get("principalCredits") or []
+
+    def _people(*categories):
+        result = []
+        for group in principal_credits:
+            category = (group.get("category") or {}).get("text", "")
+            if category not in categories:
+                continue
+            for credit in group.get("credits") or []:
+                name_data = credit.get("name") or {}
+                name_text = (name_data.get("nameText") or {}).get("text")
+                person_id = name_data.get("id")
+                if not name_text:
+                    continue
+                result.append(
+                    {
+                        "name": name_text,
+                        "url": f"https://www.imdb.com/name/{person_id}/" if person_id else "",
+                    }
+                )
+        return result
+
+    genres = [
+        (item or {}).get("text")
+        for item in (payload.get("genres") or {}).get("genres", [])
+        if (item or {}).get("text")
+    ]
+    keywords = []
+    for edge in (payload.get("keywords") or {}).get("edges", []):
+        node = (edge or {}).get("node") or {}
+        if keyword := node.get("text"):
+            keywords.append(keyword)
+
+    ratings = payload.get("ratingsSummary") or {}
+    trailer_urls = ((payload.get("latestTrailer") or {}).get("playbackURLs") or [])
+    return {
+        "name": (payload.get("titleText") or {}).get("text"),
+        "alternateName": (payload.get("originalTitleText") or {}).get("text"),
+        "@type": (payload.get("titleType") or {}).get("text"),
+        "releaseYear": (payload.get("releaseYear") or {}).get("year"),
+        "contentRating": (payload.get("certificate") or {}).get("rating"),
+        "aggregateRating": {
+            "ratingValue": ratings.get("aggregateRating"),
+            "ratingCount": ratings.get("voteCount"),
+        },
+        "genre": genres,
+        "description": ((payload.get("plot") or {}).get("plotText") or {}).get("plainText"),
+        "image": (payload.get("primaryImage") or {}).get("url"),
+        "trailer": {"url": trailer_urls[0].get("url")} if trailer_urls and trailer_urls[0].get("url") else None,
+        "keywords": ", ".join(keywords),
+        "director": _people("Director"),
+        "creator": _people("Writers", "Writer", "Creator"),
+        "actor": _people("Stars", "Cast"),
+    }
+
 
 class _ImdbTemplateDefaults(dict):
     def __missing__(self, key):
@@ -831,9 +930,11 @@ async def imdb_id_callback(self: Client, query: CallbackQuery):
             resp = await fetch.get(imdb_url)
             resp.raise_for_status()
             sop = BeautifulSoup(resp, "lxml")
-            r_json = json.loads(
-                sop.find("script", attrs={"type": "application/ld+json"}).contents[0]
-            )
+            r_json = await _get_imdb_details_graphql(f"tt{movie}")
+            if not r_json:
+                r_json = json.loads(
+                    sop.find("script", attrs={"type": "application/ld+json"}).contents[0]
+                )
             ott = await search_jw(
                 r_json.get("alternateName") or r_json.get("name"), "ID"
             )
@@ -1246,9 +1347,11 @@ async def imdb_en_callback(self: Client, query: CallbackQuery):
             resp = await fetch.get(imdb_url)
             resp.raise_for_status()
             sop = BeautifulSoup(resp, "lxml")
-            r_json = json.loads(
-                sop.find("script", attrs={"type": "application/ld+json"}).contents[0]
-            )
+            r_json = await _get_imdb_details_graphql(f"tt{movie}")
+            if not r_json:
+                r_json = json.loads(
+                    sop.find("script", attrs={"type": "application/ld+json"}).contents[0]
+                )
             ott = await search_jw(
                 r_json.get("alternateName") or r_json.get("name"), "US"
             )
