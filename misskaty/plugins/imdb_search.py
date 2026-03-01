@@ -4,7 +4,6 @@
 # * Copyright ©YasirPedia All rights reserved
 import contextlib
 import html
-import inspect
 import logging
 import re
 import sys
@@ -228,10 +227,7 @@ def _with_html_placeholders(payload: dict) -> dict:
 
 
 def _preview_kwargs(is_disabled: bool) -> dict:
-    params = inspect.signature(Client.edit_message_text).parameters
-    if "link_preview_options" in params:
-        return {"link_preview_options": {"is_disabled": is_disabled}}
-    return {"disable_web_page_preview": is_disabled}
+    return {"link_preview_options": {"is_disabled": is_disabled}}
 
 
 def render_imdb_template_with_buttons(template: str, payload: dict):

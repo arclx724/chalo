@@ -3,7 +3,6 @@
 # * @projectName   MissKatyPyro
 # * Copyright ©YasirPedia All rights reserved
 import html
-import inspect
 import json
 import re
 import traceback
@@ -124,10 +123,7 @@ def _with_html_placeholders(payload: dict) -> dict:
 
 
 def _preview_kwargs(is_disabled: bool) -> dict:
-    params = inspect.signature(app.edit_message_text).parameters
-    if "link_preview_options" in params:
-        return {"link_preview_options": {"is_disabled": is_disabled}}
-    return {"disable_web_page_preview": is_disabled}
+    return {"link_preview_options": {"is_disabled": is_disabled}}
 
 
 @app.on_inline_query()
