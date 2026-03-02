@@ -1147,24 +1147,14 @@ async def imdb_id_callback(self: Client, query: CallbackQuery):
                 )
             elif thumb := r_json.get("image"):
                 try:
-                    if query.message.photo:
-                        await self.edit_message_media(
-                            chat_id=query.message.chat.id,
-                            message_id=query.message.id,
-                            media=InputMediaPhoto(
-                                thumb, caption=res_str, parse_mode=enums.ParseMode.HTML
-                            ),
-                            reply_markup=markup,
-                        )
-                    else:
-                        await query.message.reply_photo(
-                            thumb,
-                            caption=res_str,
-                            parse_mode=enums.ParseMode.HTML,
-                            reply_markup=markup,
-                        )
-                        with contextlib.suppress(Exception):
-                            await query.message.delete()
+                    await self.edit_message_media(
+                        chat_id=query.message.chat.id,
+                        message_id=query.message.id,
+                        media=InputMediaPhoto(
+                            thumb, caption=res_str, parse_mode=enums.ParseMode.HTML
+                        ),
+                        reply_markup=markup,
+                    )
                 except (PhotoInvalidDimensions, WebpageMediaEmpty):
                     poster = thumb.replace(".jpg", "._V1_UX360.jpg")
                     await self.edit_message_media(
@@ -1550,24 +1540,14 @@ async def imdb_en_callback(self: Client, query: CallbackQuery):
                 )
             elif thumb := r_json.get("image"):
                 try:
-                    if query.message.photo:
-                        await self.edit_message_media(
-                            chat_id=query.message.chat.id,
-                            message_id=query.message.id,
-                            media=InputMediaPhoto(
-                                thumb, caption=res_str, parse_mode=enums.ParseMode.HTML
-                            ),
-                            reply_markup=markup,
-                        )
-                    else:
-                        await query.message.reply_photo(
-                            thumb,
-                            caption=res_str,
-                            parse_mode=enums.ParseMode.HTML,
-                            reply_markup=markup,
-                        )
-                        with contextlib.suppress(Exception):
-                            await query.message.delete()
+                    await self.edit_message_media(
+                        chat_id=query.message.chat.id,
+                        message_id=query.message.id,
+                        media=InputMediaPhoto(
+                            thumb, caption=res_str, parse_mode=enums.ParseMode.HTML
+                        ),
+                        reply_markup=markup,
+                    )
                 except (PhotoInvalidDimensions, WebpageMediaEmpty):
                     poster = thumb.replace(".jpg", "._V1_UX360.jpg")
                     await self.edit_message_media(
