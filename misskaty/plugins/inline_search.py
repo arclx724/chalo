@@ -622,30 +622,15 @@ async def inline_menu(self, inline_query: InlineQuery):
         res = []
         try:
             search_results = await fetch.get(
-                f"https://yasirapi.eu.org/imdb-search?q={quote_plus(movie_name)}"
+                f"https://v3.sg.media-imdb.com/suggestion/titles/x/{quote_plus(movie_name)}.json"
             )
-            imdb_payload = json.loads(search_results.text)
-            res = imdb_payload.get("result")
+            imdb_payload = search_results.json() or {}
+            res = imdb_payload.get("d") or []
         except Exception as err:
-            LOGGER.warning(f"Inline IMDb primary search failed: {err}")
-        if isinstance(res, str):
-            try:
-                res = json.loads(res)
-            except json.JSONDecodeError:
-                res = []
-        if isinstance(res, dict):
-            res = res.get("d") or res.get("results") or []
+            LOGGER.warning(f"Inline IMDb official suggestion search failed: {err}")
+            res = []
         if not isinstance(res, list):
             res = []
-        if not res:
-            try:
-                alt = await fetch.get(
-                    f"https://v3.sg.media-imdb.com/suggestion/titles/x/{quote_plus(movie_name)}.json"
-                )
-                res = (alt.json() or {}).get("d") or []
-            except Exception as err:
-                LOGGER.warning(f"Inline IMDb fallback search failed: {err}")
-                res = []
         stored_fields = await get_imdb_layout_fields(inline_query.from_user.id)
         hidden_fields = _normalize_imdb_layout_fields(stored_fields)
         disable_web_preview = "web_preview" in hidden_fields
