@@ -273,7 +273,7 @@ async def imdb_template(_, ctx: Message):
             "{genres_list}, {countries}, {countries_list}, {languages}, "
             "{languages_list}, {directors}, {writers}, {cast}, {plot}, {keywords}, "
             "{keywords_list}, {awards}, {availability}, {ott}, {imdb_by}, "
-            "{imdb_url}, {trailer_url}, {poster_url}, {imdb_code}, {locale}"
+            "{imdb_url}, {trailer_url}, {poster_url}, {imdb_code}, {metascore}, {locale}"
         )
         if template:
             return await ctx.reply(
@@ -495,6 +495,7 @@ async def imdb_template_menu(_, query: CallbackQuery):
         "• <code>{trailer_url}</code> - URL trailer\n"
         "• <code>{poster_url}</code> - URL poster\n"
         "• <code>{imdb_code}</code> - ID IMDb (misal tt1234567)\n"
+        "• <code>{metascore}</code> - Skor Metacritic\n"
         "• <code>{locale}</code> - Kode bahasa (id/en)\n"
         "• <code>{nama_placeholder_html}</code> - versi aman HTML (otomatis tersedia)\n"
         "  Contoh: <code>{plot_html}</code>\n\n"
@@ -1039,6 +1040,7 @@ async def imdb_id_callback(self: Client, query: CallbackQuery):
                     "trailer_url": trailer_url,
                     "poster_url": poster_url,
                     "imdb_code": imdb_code,
+                    "metascore": str(r_json.get("metascore") or "-"),
                     "locale": "id",
                     "link": imdb_url,
                     "movie_type": typee or "-",
@@ -1432,6 +1434,7 @@ async def imdb_en_callback(self: Client, query: CallbackQuery):
                     "trailer_url": trailer_url,
                     "poster_url": poster_url,
                     "imdb_code": imdb_code,
+                    "metascore": str(r_json.get("metascore") or "-"),
                     "locale": "en",
                     "link": imdb_url,
                     "movie_type": typee or "-",

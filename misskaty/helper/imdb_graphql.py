@@ -29,6 +29,7 @@ IMDB_TITLE_QUERY = """query GetTitle($id: ID!) {
     releaseDate { day month year }
     runtime { seconds }
     ratingsSummary { aggregateRating voteCount }
+    metacritic { metascore { score } }
     spokenLanguages { spokenLanguages { text } }
     countriesOfOrigin { countries { text } }
     certificate { rating }
@@ -41,6 +42,16 @@ IMDB_TITLE_QUERY = """query GetTitle($id: ID!) {
     }
     keywords(first: 20) { edges { node { text } } }
     latestTrailer { playbackURLs { url } }
+    prestigiousAwardSummary {
+      wins
+      nominations
+      award { text }
+    }
+    awardNominations {
+      total
+      wins
+      excludingWins
+    }
   }
 }"""
 
@@ -116,6 +127,23 @@ async def get_imdb_details_graphql(title_id: str):
     runtime_seconds = (payload.get("runtime") or {}).get("seconds")
     duration_text = f"{runtime_seconds // 60} min" if isinstance(runtime_seconds, int) and runtime_seconds > 0 else None
 
+    award_summary = payload.get("prestigiousAwardSummary") or {}
+    award_nominations = payload.get("awardNominations") or {}
+    award_name = ((award_summary.get("award") or {}).get("text") or "").strip()
+    wins = award_summary.get("wins")
+    nominations = award_summary.get("nominations")
+    total_nominations = award_nominations.get("total")
+    award_bits = []
+    if isinstance(wins, int):
+        award_bits.append(f"{wins} win{'s' if wins != 1 else ''}")
+    if isinstance(nominations, int):
+        award_bits.append(f"{nominations} nomination{'s' if nominations != 1 else ''}")
+    elif isinstance(total_nominations, int):
+        award_bits.append(f"{total_nominations} nomination{'s' if total_nominations != 1 else ''}")
+    if award_name:
+        award_bits.append(award_name)
+    awards_text = ", ".join(award_bits) if award_bits else None
+
     return {
         "name": (payload.get("titleText") or {}).get("text"),
         "alternateName": (payload.get("originalTitleText") or {}).get("text"),
@@ -138,6 +166,7 @@ async def get_imdb_details_graphql(title_id: str):
             "ratingValue": (payload.get("ratingsSummary") or {}).get("aggregateRating"),
             "ratingCount": (payload.get("ratingsSummary") or {}).get("voteCount"),
         },
+        "metascore": (((payload.get("metacritic") or {}).get("metascore") or {}).get("score")),
         "genre": [
             (item or {}).get("text")
             for item in (payload.get("genres") or {}).get("genres", [])
@@ -155,6 +184,7 @@ async def get_imdb_details_graphql(title_id: str):
             for edge in (payload.get("keywords") or {}).get("edges", [])
             if (edge.get("node") or {}).get("text")
         ),
+        "awards": awards_text,
         "director": _people("Director"),
         "creator": _people("Writers", "Writer", "Creator"),
         "actor": _people("Stars", "Cast"),

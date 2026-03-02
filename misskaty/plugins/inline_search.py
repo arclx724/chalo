@@ -962,6 +962,7 @@ async def imdb_inl(_, query):
                     "trailer_url": trailer_url,
                     "poster_url": poster_url,
                     "imdb_code": imdb_code,
+                    "metascore": str(r_json.get("metascore") or "-"),
                     "locale": "id",
                     "link": url,
                     "movie_type": typee or "-",
