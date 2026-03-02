@@ -759,19 +759,9 @@ async def imdb_inl(_, query):
                 )
             url = f"https://m.imdb.com/title/{movie}/"
             r_json = await _get_imdb_details_graphql(movie)
-            sop = None
-            try:
-                resp = await fetch.get(url)
-                sop = BeautifulSoup(resp, "lxml")
-            except Exception as soup_err:
-                LOGGER.warning(f"Inline IMDb HTML fallback unavailable for {movie}: {soup_err}")
             if not r_json:
-                if not sop:
-                    raise ValueError("IMDb GraphQL empty and HTML fallback unavailable")
-                script_tag = sop.find("script", attrs={"type": "application/ld+json"})
-                if not script_tag or not script_tag.contents:
-                    raise ValueError("IMDb ld+json not found")
-                r_json = json.loads(script_tag.contents[0])
+                raise ValueError("IMDb GraphQL returned empty payload")
+            sop = None
             ott = await search_jw(r_json.get("alternateName") or r_json["name"], "ID")
             template = await get_imdb_template(query.from_user.id)
             imdb_by = await get_imdb_by(query.from_user.id) or f"@{app.me.username}"
@@ -794,12 +784,6 @@ async def imdb_inl(_, query):
             rilis_url = ""
             summary = ""
             tahun = str(r_json.get("releaseYear") or "N/A")
-            if tahun == "N/A" and sop:
-                tahun = (
-                    re.findall(r"\d{4}\W\d{4}|\d{4}-?", sop.title.text)[0]
-                    if re.findall(r"\d{4}\W\d{4}|\d{4}-?", sop.title.text)
-                    else "N/A"
-                )
             res_str += f"<b>📹 Judul:</b> <a href=\"{url}\">{r_json['name']} [{tahun}]</a> (<code>{typee}</code>)\n"
             if r_json.get("alternateName"):
                 res_str += (
@@ -807,12 +791,7 @@ async def imdb_inl(_, query):
                 )
             else:
                 res_str += "\n"
-            if durasi := (sop.select('li[data-testid="title-techspec_runtime"]') if sop else []):
-                durasi = (
-                    durasi[0]
-                    .find(class_="ipc-metadata-list-item__content-container")
-                    .text
-                )
+            if durasi := r_json.get("duration"):
                 duration_raw = durasi
                 duration_text = (await gtranslate(durasi, "auto", "id")).text
                 res_str += f"<b>Durasi:</b> <code>{duration_text}</code>\n"
@@ -821,19 +800,9 @@ async def imdb_inl(_, query):
                 res_str += f"<b>Kategori:</b> <code>{r_json['contentRating']}</code> \n"
             if r_json.get("aggregateRating"):
                 res_str += f"<b>Peringkat:</b> <code>{r_json['aggregateRating']['ratingValue']}⭐️ dari {r_json['aggregateRating']['ratingCount']} pengguna</code> \n"
-            if release := (sop.select('li[data-testid="title-details-releasedate"]') if sop else []):
-                rilis = (
-                    release[0]
-                    .find(
-                        class_="ipc-metadata-list-item__list-content-item ipc-metadata-list-item__list-content-item--link"
-                    )
-                    .text
-                )
-                rilis_url = release[0].find(
-                    class_="ipc-metadata-list-item__list-content-item ipc-metadata-list-item__list-content-item--link"
-                )["href"]
+            if rilis := r_json.get("datePublished"):
                 release_date_text = rilis or "-"
-                res_str += f"<b>Rilis:</b> <a href=\"https://www.imdb.com{rilis_url}\">{rilis}</a>\n"
+                res_str += f"<b>Rilis:</b> <code>{rilis}</code>\n"
             genre_list = []
             if r_json.get("genre"):
                 genre_list = (
@@ -853,17 +822,7 @@ async def imdb_inl(_, query):
             else:
                 genre_text = genre_text[:-2]
             country_list = []
-            if negara := (sop.select('li[data-testid="title-details-origin"]') if sop else []):
-                country_items = negara[0].findAll(
-                    class_="ipc-metadata-list-item__list-content-item ipc-metadata-list-item__list-content-item--link"
-                )
-                country_list = [country.text for country in country_items]
-                country_text = "".join(
-                    f"{demoji(country.text)} #{country.text.replace(' ', '_').replace('-', '_')}, "
-                    for country in country_items
-                )
-                res_str += f"<b>Negara:</b> {country_text[:-2]}\n"
-            if country_text == "-" and (countries := r_json.get("countryOfOrigin")):
+            if countries := r_json.get("countryOfOrigin"):
                 country_items = countries if isinstance(countries, list) else [countries]
                 country_list = [str(country) for country in country_items if country]
                 country_text = "".join(
@@ -877,17 +836,7 @@ async def imdb_inl(_, query):
             else:
                 country_text = country_text[:-2]
             language_list = []
-            if bahasa := (sop.select('li[data-testid="title-details-languages"]') if sop else []):
-                language_items = bahasa[0].findAll(
-                    class_="ipc-metadata-list-item__list-content-item ipc-metadata-list-item__list-content-item--link"
-                )
-                language_list = [lang.text for lang in language_items]
-                language_text = "".join(
-                    f"#{lang.text.replace(' ', '_').replace('-', '_')}, "
-                    for lang in language_items
-                )
-                res_str += f"<b>Bahasa:</b> {language_text[:-2]}\n"
-            if language_text == "-" and (languages := r_json.get("inLanguage")):
+            if languages := r_json.get("inLanguage"):
                 language_items = languages if isinstance(languages, list) else [languages]
                 language_list = [str(lang) for lang in language_items if lang]
                 language_text = "".join(
@@ -913,12 +862,12 @@ async def imdb_inl(_, query):
             writer_names = []
             if r_json.get("creator"):
                 writer_names = [
-                    i["name"] for i in r_json["creator"] if i["@type"] == "Person"
+                    i["name"] for i in r_json["creator"] if i.get("@type") == "Person"
                 ]
                 creator = "".join(
                     f"<a href='{i['url']}'>{i['name']}</a>, "
                     for i in r_json["creator"]
-                    if i["@type"] == "Person"
+                    if i.get("@type") == "Person"
                 )
                 writer_text = creator[:-2] if creator else "-"
                 res_str += f"<b>Penulis:</b> {creator[:-2]}\n"
@@ -946,12 +895,7 @@ async def imdb_inl(_, query):
                 )
             if keyword_text != "-":
                 keyword_text = keyword_text[:-2]
-            if award := (sop.select('li[data-testid="award_information"]') if sop else []):
-                awards = (
-                    award[0]
-                    .find(class_="ipc-metadata-list-item__list-content-item")
-                    .text
-                )
+            if awards := r_json.get("awards"):
                 awards_text = (await gtranslate(awards, "auto", "id")).text or "-"
                 res_str += f"<b>🏆 Penghargaan:</b>\n<blockquote expandable><code>{awards_text}</code></blockquote>\n"
             else:
