@@ -8,6 +8,7 @@ import json
 import logging
 import re
 import sys
+import traceback
 from typing import Optional
 from urllib.parse import quote_plus
 
@@ -1350,8 +1351,16 @@ async def imdb_id_callback(self: Client, query: CallbackQuery):
             await query.message.edit(
                 f"HTTP Exception for IMDB Search - <code>{exc}</code>"
             )
-        except (AttributeError, ValueError):
-            await query.message.edit("Maaf, gagal mendapatkan info data dari IMDB.")
+        except (AttributeError, ValueError) as err:
+            LOGGER.exception("IMDb ID callback failed while parsing IMDb payload")
+            exc = traceback.format_exc(limit=5)
+            await query.message.edit(
+                "Maaf, gagal mendapatkan info data dari IMDB.\n"
+                f"<blockquote><code>{err}</code></blockquote>\n"
+                f"<blockquote expandable><code>{exc}</code></blockquote>",
+                parse_mode=enums.ParseMode.HTML,
+                link_preview_options=pyro_types.LinkPreviewOptions(is_disabled=True),
+            )
         except (MessageNotModified, MessageIdInvalid):
             pass
 
@@ -1764,7 +1773,15 @@ async def imdb_en_callback(self: Client, query: CallbackQuery):
             await query.message.edit(
                 f"HTTP Exception for IMDB Search - <code>{exc}</code>"
             )
-        except (AttributeError, ValueError):
-            await query.message.edit("Sorry, failed getting data from IMDB.")
+        except (AttributeError, ValueError) as err:
+            LOGGER.exception("IMDb EN callback failed while parsing IMDb payload")
+            exc = traceback.format_exc(limit=5)
+            await query.message.edit(
+                "Sorry, failed getting data from IMDB.\n"
+                f"<blockquote><code>{err}</code></blockquote>\n"
+                f"<blockquote expandable><code>{exc}</code></blockquote>",
+                parse_mode=enums.ParseMode.HTML,
+                link_preview_options=pyro_types.LinkPreviewOptions(is_disabled=True),
+            )
         except (MessageNotModified, MessageIdInvalid):
             pass
