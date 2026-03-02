@@ -757,11 +757,10 @@ async def imdb_inl(_, query):
                     parse_mode=enums.ParseMode.HTML,
                     link_preview_options=pyro_types.LinkPreviewOptions(is_disabled=True),
                 )
-            url = f"https://m.imdb.com/title/{movie}/"
+            url = f"https://www.imdb.com/title/{movie}/"
             r_json = await get_imdb_details_graphql(movie)
             if not r_json:
-                raise ValueError("IMDb GraphQL returned empty payload")
-            sop = None
+                raise ValueError("IMDb GraphQL returned empty payload (no HTML fallback used)")
             ott = await search_jw(r_json.get("alternateName") or r_json["name"], "ID")
             template = await get_imdb_template(query.from_user.id)
             imdb_by = await get_imdb_by(query.from_user.id) or f"@{app.me.username}"
