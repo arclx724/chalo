@@ -4,7 +4,6 @@
 # * Copyright ©YasirPedia All rights reserved
 import contextlib
 import html
-import json
 import logging
 import re
 import sys
@@ -13,7 +12,6 @@ from typing import Optional
 from urllib.parse import quote_plus
 
 import httpx
-from bs4 import BeautifulSoup
 from pykeyboard import InlineButton, InlineKeyboard
 from pyrogram import Client, enums
 from pyrogram import types as pyro_types
@@ -54,161 +52,11 @@ from database.imdb_db import (
 )
 from misskaty import app
 from misskaty.helper import GENRES_EMOJI, Cache, fetch, gtranslate, get_random_string, search_jw
+from misskaty.helper.imdb_graphql import format_imdb_date, get_imdb_details_graphql
 from utils import demoji
 
 LOGGER = logging.getLogger("MissKaty")
 LIST_CARI = Cache(filename="imdb_cache.db", path="cache", in_memory=False)
-
-IMDB_GRAPHQL_URL = "https://caching.graphql.imdb.com/"
-IMDB_GRAPHQL_HEADERS = {
-    "accept": "application/graphql+json, application/json",
-    "accept-language": "en-US,en;q=0.9",
-    "content-type": "application/json",
-    "origin": "https://www.imdb.com",
-    "referer": "https://www.imdb.com/",
-    "priority": "u=1, i",
-    "user-agent": (
-        "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/137.0.0.0 Mobile Safari/537.36"
-    ),
-}
-IMDB_TITLE_QUERY = """query GetTitle($id: ID!) {
-  title(id: $id) {
-    id
-    titleText { text }
-    originalTitleText { text }
-    titleType { text }
-    releaseYear { year }
-    releaseDate { day month year }
-    runtime { seconds }
-    ratingsSummary { aggregateRating voteCount }
-    spokenLanguages { spokenLanguages { text } }
-    countriesOfOrigin { countries { text } }
-    certificate { rating }
-    genres { genres { text } }
-    plot { plotText { plainText } }
-    primaryImage { url }
-    principalCredits {
-      category { text }
-      credits { name { id nameText { text } } }
-    }
-    keywords(first: 20) { edges { node { text } } }
-    latestTrailer { playbackURLs { url } }
-  }
-}"""
-
-
-async def _get_imdb_details_graphql(title_id: str):
-    title_id = title_id if str(title_id).startswith("tt") else f"tt{title_id}"
-    try:
-        response = await fetch.post(
-            IMDB_GRAPHQL_URL,
-            headers=IMDB_GRAPHQL_HEADERS,
-            json={
-                "query": IMDB_TITLE_QUERY,
-                "operationName": "GetTitle",
-                "variables": {"id": title_id},
-            },
-        )
-        response.raise_for_status()
-        body = response.json()
-    except Exception as err:
-        LOGGER.warning(f"IMDb GraphQL request failed for {title_id}: {err}")
-        return {}
-
-    payload = body.get("data", {}).get("title") or {}
-    if not payload:
-        if body.get("errors"):
-            LOGGER.warning(f"IMDb GraphQL returned errors for {title_id}: {body.get('errors')}")
-        return {}
-
-    principal_credits = payload.get("principalCredits") or []
-
-    def _people(*categories):
-        result = []
-        for group in principal_credits:
-            category = (group.get("category") or {}).get("text", "")
-            if category not in categories:
-                continue
-            for credit in group.get("credits") or []:
-                name_data = credit.get("name") or {}
-                name_text = (name_data.get("nameText") or {}).get("text")
-                person_id = name_data.get("id")
-                if not name_text:
-                    continue
-                result.append(
-                    {
-                        "@type": "Person",
-                        "name": name_text,
-                        "url": f"https://www.imdb.com/name/{person_id}/" if person_id else "",
-                    }
-                )
-        return result
-
-    genres = [
-        (item or {}).get("text")
-        for item in (payload.get("genres") or {}).get("genres", [])
-        if (item or {}).get("text")
-    ]
-    keywords = []
-    for edge in (payload.get("keywords") or {}).get("edges", []):
-        node = (edge or {}).get("node") or {}
-        if keyword := node.get("text"):
-            keywords.append(keyword)
-
-    ratings = payload.get("ratingsSummary") or {}
-    trailer_urls = (payload.get("latestTrailer") or {}).get("playbackURLs") or []
-    release_date = payload.get("releaseDate") or {}
-    runtime_seconds = (payload.get("runtime") or {}).get("seconds")
-    date_published = None
-    if release_date.get("year"):
-        date_published = (
-            f"{release_date.get('year')}-"
-            f"{release_date.get('month') or 1}-"
-            f"{release_date.get('day') or 1}"
-        )
-    duration_text = None
-    if isinstance(runtime_seconds, int) and runtime_seconds > 0:
-        duration_text = f"{runtime_seconds // 60} min"
-    languages = [
-        (item or {}).get("text")
-        for item in (payload.get("spokenLanguages") or {}).get("spokenLanguages", [])
-        if (item or {}).get("text")
-    ]
-    countries = [
-        (item or {}).get("text")
-        for item in (payload.get("countriesOfOrigin") or {}).get("countries", [])
-        if (item or {}).get("text")
-    ]
-    return {
-        "name": (payload.get("titleText") or {}).get("text"),
-        "alternateName": (payload.get("originalTitleText") or {}).get("text"),
-        "@type": (payload.get("titleType") or {}).get("text"),
-        "releaseYear": (payload.get("releaseYear") or {}).get("year"),
-        "datePublished": date_published,
-        "duration": duration_text,
-        "inLanguage": languages,
-        "countryOfOrigin": countries,
-        "contentRating": (payload.get("certificate") or {}).get("rating"),
-        "aggregateRating": {
-            "ratingValue": ratings.get("aggregateRating"),
-            "ratingCount": ratings.get("voteCount"),
-        },
-        "genre": genres,
-        "description": ((payload.get("plot") or {}).get("plotText") or {}).get("plainText"),
-        "image": (payload.get("primaryImage") or {}).get("url"),
-        "trailer": (
-            {"url": trailer_urls[0].get("url")}
-            if trailer_urls and trailer_urls[0].get("url")
-            else None
-        ),
-        "keywords": ", ".join(keywords),
-        "director": _people("Director"),
-        "creator": _people("Writers", "Writer", "Creator"),
-        "actor": _people("Stars", "Cast"),
-    }
-
 
 class _ImdbTemplateDefaults(dict):
     def __missing__(self, key):
@@ -979,7 +827,7 @@ async def imdb_id_callback(self: Client, query: CallbackQuery):
         try:
             await query.message.edit("<emoji id=5319190934510904031>⏳</emoji> Permintaan kamu sedang diproses.. ")
             imdb_url = f"https://m.imdb.com/title/tt{movie}/"
-            r_json = await _get_imdb_details_graphql(f"tt{movie}")
+            r_json = await get_imdb_details_graphql(f"tt{movie}")
             if not r_json:
                 raise ValueError("IMDb GraphQL returned empty payload")
             sop = None
@@ -1028,8 +876,8 @@ async def imdb_id_callback(self: Client, query: CallbackQuery):
                 rating_count = rating.get("ratingCount", "-")
                 res_str += f"<b>Peringkat:</b> <code>{rating_value}<emoji id=5958376256788502078>⭐</emoji> dari {rating_count} pengguna</code>\n"
             if rilis := r_json.get("datePublished"):
-                release_date_text = rilis or "-"
-                res_str += f"<b>Rilis:</b> <code>{rilis}</code>\n"
+                release_date_text = format_imdb_date(rilis, "id") or (rilis or "-")
+                res_str += f"<b>Rilis:</b> <code>{release_date_text}</code>\n"
             genre_list = []
             if genre := r_json.get("genre"):
                 genre_list = genre if isinstance(genre, list) else [genre]
@@ -1299,14 +1147,24 @@ async def imdb_id_callback(self: Client, query: CallbackQuery):
                 )
             elif thumb := r_json.get("image"):
                 try:
-                    await self.edit_message_media(
-                        chat_id=query.message.chat.id,
-                        message_id=query.message.id,
-                        media=InputMediaPhoto(
-                            thumb, caption=res_str, parse_mode=enums.ParseMode.HTML
-                        ),
-                        reply_markup=markup,
-                    )
+                    if query.message.photo:
+                        await self.edit_message_media(
+                            chat_id=query.message.chat.id,
+                            message_id=query.message.id,
+                            media=InputMediaPhoto(
+                                thumb, caption=res_str, parse_mode=enums.ParseMode.HTML
+                            ),
+                            reply_markup=markup,
+                        )
+                    else:
+                        await query.message.reply_photo(
+                            thumb,
+                            caption=res_str,
+                            parse_mode=enums.ParseMode.HTML,
+                            reply_markup=markup,
+                        )
+                        with contextlib.suppress(Exception):
+                            await query.message.delete()
                 except (PhotoInvalidDimensions, WebpageMediaEmpty):
                     poster = thumb.replace(".jpg", "._V1_UX360.jpg")
                     await self.edit_message_media(
@@ -1374,7 +1232,7 @@ async def imdb_en_callback(self: Client, query: CallbackQuery):
         try:
             await query.message.edit("<i><emoji id=5319190934510904031>⏳</emoji> Getting IMDb source..</i>")
             imdb_url = f"https://m.imdb.com/title/tt{movie}/"
-            r_json = await _get_imdb_details_graphql(f"tt{movie}")
+            r_json = await get_imdb_details_graphql(f"tt{movie}")
             if not r_json:
                 raise ValueError("IMDb GraphQL returned empty payload")
             sop = None
@@ -1421,8 +1279,8 @@ async def imdb_en_callback(self: Client, query: CallbackQuery):
                 rating_count = rating.get("ratingCount", "-")
                 res_str += f"<b>Rating:</b> <code>{rating_value}<emoji id=5958376256788502078>⭐</emoji> from {rating_count} users</code>\n"
             if rilis := r_json.get("datePublished"):
-                release_date_text = rilis or "-"
-                res_str += f"<b>Release:</b> <code>{rilis}</code>\n"
+                release_date_text = format_imdb_date(rilis, "en") or (rilis or "-")
+                res_str += f"<b>Release:</b> <code>{release_date_text}</code>\n"
             genre_list = []
             if genre := r_json.get("genre"):
                 genre_list = genre if isinstance(genre, list) else [genre]
@@ -1692,14 +1550,24 @@ async def imdb_en_callback(self: Client, query: CallbackQuery):
                 )
             elif thumb := r_json.get("image"):
                 try:
-                    await self.edit_message_media(
-                        chat_id=query.message.chat.id,
-                        message_id=query.message.id,
-                        media=InputMediaPhoto(
-                            thumb, caption=res_str, parse_mode=enums.ParseMode.HTML
-                        ),
-                        reply_markup=markup,
-                    )
+                    if query.message.photo:
+                        await self.edit_message_media(
+                            chat_id=query.message.chat.id,
+                            message_id=query.message.id,
+                            media=InputMediaPhoto(
+                                thumb, caption=res_str, parse_mode=enums.ParseMode.HTML
+                            ),
+                            reply_markup=markup,
+                        )
+                    else:
+                        await query.message.reply_photo(
+                            thumb,
+                            caption=res_str,
+                            parse_mode=enums.ParseMode.HTML,
+                            reply_markup=markup,
+                        )
+                        with contextlib.suppress(Exception):
+                            await query.message.delete()
                 except (PhotoInvalidDimensions, WebpageMediaEmpty):
                     poster = thumb.replace(".jpg", "._V1_UX360.jpg")
                     await self.edit_message_media(

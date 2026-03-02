@@ -30,7 +30,7 @@ from misskaty import BOT_USERNAME, app, user
 from misskaty.helper import GENRES_EMOJI, fetch, gtranslate, post_to_telegraph, search_jw
 from misskaty.plugins.dev import shell_exec
 from misskaty.plugins.misc_tools import calc_btn
-from misskaty.plugins.imdb_search import _get_imdb_details_graphql
+from misskaty.helper.imdb_graphql import format_imdb_date, get_imdb_details_graphql
 from misskaty.vars import USER_SESSION
 from utils import demoji
 
@@ -758,7 +758,7 @@ async def imdb_inl(_, query):
                     link_preview_options=pyro_types.LinkPreviewOptions(is_disabled=True),
                 )
             url = f"https://m.imdb.com/title/{movie}/"
-            r_json = await _get_imdb_details_graphql(movie)
+            r_json = await get_imdb_details_graphql(movie)
             if not r_json:
                 raise ValueError("IMDb GraphQL returned empty payload")
             sop = None
@@ -801,8 +801,8 @@ async def imdb_inl(_, query):
             if r_json.get("aggregateRating"):
                 res_str += f"<b>Peringkat:</b> <code>{r_json['aggregateRating']['ratingValue']}⭐️ dari {r_json['aggregateRating']['ratingCount']} pengguna</code> \n"
             if rilis := r_json.get("datePublished"):
-                release_date_text = rilis or "-"
-                res_str += f"<b>Rilis:</b> <code>{rilis}</code>\n"
+                release_date_text = format_imdb_date(rilis, "id") or (rilis or "-")
+                res_str += f"<b>Rilis:</b> <code>{release_date_text}</code>\n"
             genre_list = []
             if r_json.get("genre"):
                 genre_list = (
