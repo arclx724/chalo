@@ -80,7 +80,11 @@ IMDB_TITLE_QUERY = """query GetTitle($id: ID!) {
     originalTitleText { text }
     titleType { text }
     releaseYear { year }
+    releaseDate { day month year }
+    runtime { seconds }
     ratingsSummary { aggregateRating voteCount }
+    spokenLanguages { spokenLanguages { text } }
+    countriesOfOrigin { countries { text } }
     certificate { rating }
     genres { genres { text } }
     plot { plotText { plainText } }
@@ -154,11 +158,37 @@ async def _get_imdb_details_graphql(title_id: str):
 
     ratings = payload.get("ratingsSummary") or {}
     trailer_urls = (payload.get("latestTrailer") or {}).get("playbackURLs") or []
+    release_date = payload.get("releaseDate") or {}
+    runtime_seconds = (payload.get("runtime") or {}).get("seconds")
+    date_published = None
+    if release_date.get("year"):
+        date_published = (
+            f"{release_date.get('year')}-"
+            f"{release_date.get('month') or 1}-"
+            f"{release_date.get('day') or 1}"
+        )
+    duration_text = None
+    if isinstance(runtime_seconds, int) and runtime_seconds > 0:
+        duration_text = f"{runtime_seconds // 60} min"
+    languages = [
+        (item or {}).get("text")
+        for item in (payload.get("spokenLanguages") or {}).get("spokenLanguages", [])
+        if (item or {}).get("text")
+    ]
+    countries = [
+        (item or {}).get("text")
+        for item in (payload.get("countriesOfOrigin") or {}).get("countries", [])
+        if (item or {}).get("text")
+    ]
     return {
         "name": (payload.get("titleText") or {}).get("text"),
         "alternateName": (payload.get("originalTitleText") or {}).get("text"),
         "@type": (payload.get("titleType") or {}).get("text"),
         "releaseYear": (payload.get("releaseYear") or {}).get("year"),
+        "datePublished": date_published,
+        "duration": duration_text,
+        "inLanguage": languages,
+        "countryOfOrigin": countries,
         "contentRating": (payload.get("certificate") or {}).get("rating"),
         "aggregateRating": {
             "ratingValue": ratings.get("aggregateRating"),
@@ -948,11 +978,17 @@ async def imdb_id_callback(self: Client, query: CallbackQuery):
         try:
             await query.message.edit("<emoji id=5319190934510904031>⏳</emoji> Permintaan kamu sedang diproses.. ")
             imdb_url = f"https://m.imdb.com/title/tt{movie}/"
-            resp = await fetch.get(imdb_url)
-            resp.raise_for_status()
-            sop = BeautifulSoup(resp, "lxml")
             r_json = await _get_imdb_details_graphql(f"tt{movie}")
+            sop = None
+            try:
+                resp = await fetch.get(imdb_url)
+                resp.raise_for_status()
+                sop = BeautifulSoup(resp, "lxml")
+            except Exception as soup_err:
+                LOGGER.warning(f"IMDb HTML fallback unavailable for tt{movie}: {soup_err}")
             if not r_json:
+                if not sop:
+                    raise ValueError("IMDb GraphQL empty and HTML fallback unavailable")
                 script_tag = sop.find("script", attrs={"type": "application/ld+json"})
                 if not script_tag or not script_tag.contents:
                     raise ValueError("IMDb ld+json not found")
@@ -982,17 +1018,19 @@ async def imdb_id_callback(self: Client, query: CallbackQuery):
             rilis = "-"
             rilis_url = ""
             summary = ""
-            tahun = (
-                re.findall(r"\d{4}\W\d{4}|\d{4}-?", sop.title.text)[0]
-                if re.findall(r"\d{4}\W\d{4}|\d{4}-?", sop.title.text)
-                else "N/A"
-            )
+            tahun = str(r_json.get("releaseYear") or "N/A")
+            if tahun == "N/A" and sop:
+                tahun = (
+                    re.findall(r"\d{4}\W\d{4}|\d{4}-?", sop.title.text)[0]
+                    if re.findall(r"\d{4}\W\d{4}|\d{4}-?", sop.title.text)
+                    else "N/A"
+                )
             res_str += f"<b>📹 Judul:</b> <a href=\"{imdb_url}\">{r_json.get('name')} [{tahun}]</a> (<code>{typee}</code>)\n"
             if aka := r_json.get("alternateName"):
                 res_str += f"<b>📢 AKA:</b> <code>{aka}</code>\n\n"
             else:
                 res_str += "\n"
-            if durasi := sop.select('li[data-testid="title-techspec_runtime"]'):
+            if durasi := (sop.select('li[data-testid="title-techspec_runtime"]') if sop else []):
                 durasi = (
                     durasi[0]
                     .find(class_="ipc-metadata-list-item__content-container")
@@ -1010,7 +1048,7 @@ async def imdb_id_callback(self: Client, query: CallbackQuery):
                 rating_value = rating.get("ratingValue", "-")
                 rating_count = rating.get("ratingCount", "-")
                 res_str += f"<b>Peringkat:</b> <code>{rating_value}<emoji id=5958376256788502078>⭐</emoji> dari {rating_count} pengguna</code>\n"
-            if release := sop.select('li[data-testid="title-details-releasedate"]'):
+            if release := (sop.select('li[data-testid="title-details-releasedate"]') if sop else []):
                 rilis = (
                     release[0]
                     .find(
@@ -1038,7 +1076,7 @@ async def imdb_id_callback(self: Client, query: CallbackQuery):
             else:
                 genre_text = genre_text[:-2]
             country_list = []
-            if negara := sop.select('li[data-testid="title-details-origin"]'):
+            if negara := (sop.select('li[data-testid="title-details-origin"]') if sop else []):
                 country_items = negara[0].findAll(
                     class_="ipc-metadata-list-item__list-content-item ipc-metadata-list-item__list-content-item--link"
                 )
@@ -1048,12 +1086,21 @@ async def imdb_id_callback(self: Client, query: CallbackQuery):
                     for country in country_items
                 )
                 res_str += f"<b>Negara:</b> {country_text[:-2]}\n"
+            if country_text == "-" and (countries := r_json.get("countryOfOrigin")):
+                country_items = countries if isinstance(countries, list) else [countries]
+                country_list = [str(country) for country in country_items if country]
+                country_text = "".join(
+                    f"{demoji(str(country))} #{str(country).replace(' ', '_').replace('-', '_')}, "
+                    for country in country_items
+                    if country
+                )
+                res_str += f"<b>Negara:</b> {country_text[:-2]}\n"
             if country_text == "-":
                 country_text = "-"
             else:
                 country_text = country_text[:-2]
             language_list = []
-            if bahasa := sop.select('li[data-testid="title-details-languages"]'):
+            if bahasa := (sop.select('li[data-testid="title-details-languages"]') if sop else []):
                 language_items = bahasa[0].findAll(
                     class_="ipc-metadata-list-item__list-content-item ipc-metadata-list-item__list-content-item--link"
                 )
@@ -1061,6 +1108,15 @@ async def imdb_id_callback(self: Client, query: CallbackQuery):
                 language_text = "".join(
                     f"#{lang.text.replace(' ', '_').replace('-', '_')}, "
                     for lang in language_items
+                )
+                res_str += f"<b>Bahasa:</b> {language_text[:-2]}\n"
+            if language_text == "-" and (languages := r_json.get("inLanguage")):
+                language_items = languages if isinstance(languages, list) else [languages]
+                language_list = [str(lang) for lang in language_items if lang]
+                language_text = "".join(
+                    f"#{str(lang).replace(' ', '_').replace('-', '_')}, "
+                    for lang in language_items
+                    if lang
                 )
                 res_str += f"<b>Bahasa:</b> {language_text[:-2]}\n"
             if language_text == "-":
@@ -1117,7 +1173,7 @@ async def imdb_id_callback(self: Client, query: CallbackQuery):
                 )
             if keyword_text != "-":
                 keyword_text = keyword_text[:-2]
-            if award := sop.select('li[data-testid="award_information"]'):
+            if award := (sop.select('li[data-testid="award_information"]') if sop else []):
                 awards = (
                     award[0]
                     .find(class_="ipc-metadata-list-item__list-content-item")
@@ -1374,11 +1430,17 @@ async def imdb_en_callback(self: Client, query: CallbackQuery):
         try:
             await query.message.edit("<i><emoji id=5319190934510904031>⏳</emoji> Getting IMDb source..</i>")
             imdb_url = f"https://m.imdb.com/title/tt{movie}/"
-            resp = await fetch.get(imdb_url)
-            resp.raise_for_status()
-            sop = BeautifulSoup(resp, "lxml")
             r_json = await _get_imdb_details_graphql(f"tt{movie}")
+            sop = None
+            try:
+                resp = await fetch.get(imdb_url)
+                resp.raise_for_status()
+                sop = BeautifulSoup(resp, "lxml")
+            except Exception as soup_err:
+                LOGGER.warning(f"IMDb HTML fallback unavailable for tt{movie}: {soup_err}")
             if not r_json:
+                if not sop:
+                    raise ValueError("IMDb GraphQL empty and HTML fallback unavailable")
                 script_tag = sop.find("script", attrs={"type": "application/ld+json"})
                 if not script_tag or not script_tag.contents:
                     raise ValueError("IMDb ld+json not found")
@@ -1406,17 +1468,19 @@ async def imdb_en_callback(self: Client, query: CallbackQuery):
             rilis = "-"
             rilis_url = ""
             summary = ""
-            tahun = (
-                re.findall(r"\d{4}\W\d{4}|\d{4}-?", sop.title.text)[0]
-                if re.findall(r"\d{4}\W\d{4}|\d{4}-?", sop.title.text)
-                else "N/A"
-            )
+            tahun = str(r_json.get("releaseYear") or "N/A")
+            if tahun == "N/A" and sop:
+                tahun = (
+                    re.findall(r"\d{4}\W\d{4}|\d{4}-?", sop.title.text)[0]
+                    if re.findall(r"\d{4}\W\d{4}|\d{4}-?", sop.title.text)
+                    else "N/A"
+                )
             res_str += f"<b>📹 Judul:</b> <a href=\"{imdb_url}\">{r_json.get('name')} [{tahun}]</a> (<code>{typee}</code>)\n"
             if aka := r_json.get("alternateName"):
                 res_str += f"<b>📢 AKA:</b> <code>{aka}</code>\n\n"
             else:
                 res_str += "\n"
-            if durasi := sop.select('li[data-testid="title-techspec_runtime"]'):
+            if durasi := (sop.select('li[data-testid="title-techspec_runtime"]') if sop else []):
                 durasi = (
                     durasi[0]
                     .find(class_="ipc-metadata-list-item__content-container")
@@ -1434,7 +1498,7 @@ async def imdb_en_callback(self: Client, query: CallbackQuery):
                 rating_value = rating.get("ratingValue", "-")
                 rating_count = rating.get("ratingCount", "-")
                 res_str += f"<b>Rating:</b> <code>{rating_value}<emoji id=5958376256788502078>⭐</emoji> from {rating_count} users</code>\n"
-            if release := sop.select('li[data-testid="title-details-releasedate"]'):
+            if release := (sop.select('li[data-testid="title-details-releasedate"]') if sop else []):
                 rilis = (
                     release[0]
                     .find(
@@ -1462,7 +1526,7 @@ async def imdb_en_callback(self: Client, query: CallbackQuery):
             else:
                 genre_text = genre_text[:-2]
             country_list = []
-            if negara := sop.select('li[data-testid="title-details-origin"]'):
+            if negara := (sop.select('li[data-testid="title-details-origin"]') if sop else []):
                 country_items = negara[0].findAll(
                     class_="ipc-metadata-list-item__list-content-item ipc-metadata-list-item__list-content-item--link"
                 )
@@ -1477,7 +1541,7 @@ async def imdb_en_callback(self: Client, query: CallbackQuery):
             else:
                 country_text = country_text[:-2]
             language_list = []
-            if bahasa := sop.select('li[data-testid="title-details-languages"]'):
+            if bahasa := (sop.select('li[data-testid="title-details-languages"]') if sop else []):
                 language_items = bahasa[0].findAll(
                     class_="ipc-metadata-list-item__list-content-item ipc-metadata-list-item__list-content-item--link"
                 )
@@ -1542,7 +1606,7 @@ async def imdb_en_callback(self: Client, query: CallbackQuery):
                 )
             if keyword_text != "-":
                 keyword_text = keyword_text[:-2]
-            if award := sop.select('li[data-testid="award_information"]'):
+            if award := (sop.select('li[data-testid="award_information"]') if sop else []):
                 awards = (
                     award[0]
                     .find(class_="ipc-metadata-list-item__list-content-item")
