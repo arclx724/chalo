@@ -9,6 +9,7 @@ import traceback
 from logging import getLogger
 from sys import platform
 from sys import version as pyver
+from urllib.parse import quote_plus
 
 from bs4 import BeautifulSoup
 from pykeyboard import InlineButton, InlineKeyboard
@@ -617,11 +618,16 @@ async def inline_menu(self, inline_query: InlineQuery):
                 switch_pm_parameter="inline",
             )
         movie_name = inline_query.query.split(None, 1)[1].strip()
-        search_results = await fetch.get(
-            f"https://yasirapi.eu.org/imdb-search?q={movie_name}"
-        )
-        imdb_payload = json.loads(search_results.text)
-        res = imdb_payload.get("result")
+        imdb_payload = {"q": movie_name}
+        res = []
+        try:
+            search_results = await fetch.get(
+                f"https://yasirapi.eu.org/imdb-search?q={quote_plus(movie_name)}"
+            )
+            imdb_payload = json.loads(search_results.text)
+            res = imdb_payload.get("result")
+        except Exception as err:
+            LOGGER.warning(f"Inline IMDb primary search failed: {err}")
         if isinstance(res, str):
             try:
                 res = json.loads(res)
@@ -631,6 +637,15 @@ async def inline_menu(self, inline_query: InlineQuery):
             res = res.get("d") or res.get("results") or []
         if not isinstance(res, list):
             res = []
+        if not res:
+            try:
+                alt = await fetch.get(
+                    f"https://v3.sg.media-imdb.com/suggestion/titles/x/{quote_plus(movie_name)}.json"
+                )
+                res = (alt.json() or {}).get("d") or []
+            except Exception as err:
+                LOGGER.warning(f"Inline IMDb fallback search failed: {err}")
+                res = []
         stored_fields = await get_imdb_layout_fields(inline_query.from_user.id)
         hidden_fields = _normalize_imdb_layout_fields(stored_fields)
         disable_web_preview = "web_preview" in hidden_fields
