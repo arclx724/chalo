@@ -926,6 +926,15 @@ async def imdb_inl(_, query):
                 )
                 poster_url = r_json.get("image") or "-"
                 trailer_url = r_json.get("trailer", {}).get("url") or "-"
+                total_nominations = r_json.get("totalNominations") or 0
+                trivia_items = r_json.get("triviaItems") or []
+                goof_items = r_json.get("goofItems") or []
+                similar_titles = r_json.get("similarTitles") or []
+                similar_titles_text = ", ".join(
+                    f"{item.get('title')} ({item.get('year')})" if item.get("year") else item.get("title")
+                    for item in similar_titles
+                    if item.get("title")
+                )
                 payload = {
                     "title": title,
                     "title_with_year": title_with_year,
@@ -980,6 +989,14 @@ async def imdb_inl(_, query):
                     ),
                     "storyline": storyline_text,
                     "keyword": keyword_text,
+                    "production_status": r_json.get("productionStatus") or "-",
+                    "total_nominations": total_nominations,
+                    "trivia_items": "\n".join(trivia_items) if trivia_items else "-",
+                    "trivia_count": len(trivia_items),
+                    "goof_items": "\n".join(goof_items) if goof_items else "-",
+                    "goof_count": len(goof_items),
+                    "similar_titles": similar_titles_text or "-",
+                    "similar_count": len(similar_titles),
                 }
                 template_markup = None
                 rendered, template_buttons = render_imdb_template_with_buttons(

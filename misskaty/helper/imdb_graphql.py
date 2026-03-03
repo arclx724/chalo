@@ -40,6 +40,20 @@ IMDB_TITLE_QUERY = """query GetTitle($id: ID!) {
       credits { name { id nameText { text } } }
     }
     keywords(first: 20) { edges { node { text } } }
+    productionStatus { currentProductionStage { text } }
+    nominations { total }
+    trivia(first: 5) { edges { node { text { plainText } } } }
+    goofs(first: 5) { edges { node { text { plainText } } } }
+    moreLikeThisTitles(first: 5) {
+      edges {
+        node {
+          id
+          titleText { text }
+          releaseYear { year }
+          ratingsSummary { aggregateRating }
+        }
+      }
+    }
     latestTrailer { playbackURLs { url } }
   }
 }"""
@@ -116,6 +130,42 @@ async def get_imdb_details_graphql(title_id: str):
     runtime_seconds = (payload.get("runtime") or {}).get("seconds")
     duration_text = f"{runtime_seconds // 60} min" if isinstance(runtime_seconds, int) and runtime_seconds > 0 else None
 
+    total_nominations = ((payload.get("nominations") or {}).get("total") or 0)
+
+    def _items_from_edges(container: dict | None) -> list[str]:
+        if not isinstance(container, dict):
+            return []
+        return [
+            (((edge or {}).get("node") or {}).get("text") or {}).get("plainText")
+            for edge in container.get("edges", [])
+            if (((edge or {}).get("node") or {}).get("text") or {}).get("plainText")
+        ]
+
+    trivia_items = _items_from_edges(payload.get("trivia"))
+    goof_items = _items_from_edges(payload.get("goofs"))
+
+    similar_titles = []
+    for edge in (payload.get("moreLikeThisTitles") or {}).get("edges", []):
+        node = (edge or {}).get("node") or {}
+        title_text = (node.get("titleText") or {}).get("text")
+        if not title_text:
+            continue
+        similar_titles.append({
+            "id": node.get("id"),
+            "title": title_text,
+            "year": (node.get("releaseYear") or {}).get("year"),
+            "rating": (node.get("ratingsSummary") or {}).get("aggregateRating"),
+        })
+
+    awards_parts = []
+    if total_nominations:
+        awards_parts.append(f"Nominated for {total_nominations} awards")
+    if trivia_items:
+        awards_parts.append(f"{len(trivia_items)} trivia items")
+    if goof_items:
+        awards_parts.append(f"{len(goof_items)} goofs")
+    awards_summary = "; ".join(awards_parts)
+
     return {
         "name": (payload.get("titleText") or {}).get("text"),
         "alternateName": (payload.get("originalTitleText") or {}).get("text"),
@@ -145,6 +195,12 @@ async def get_imdb_details_graphql(title_id: str):
         ],
         "description": ((payload.get("plot") or {}).get("plotText") or {}).get("plainText"),
         "image": (payload.get("primaryImage") or {}).get("url"),
+        "productionStatus": ((payload.get("productionStatus") or {}).get("currentProductionStage") or {}).get("text"),
+        "totalNominations": total_nominations,
+        "triviaItems": trivia_items,
+        "goofItems": goof_items,
+        "similarTitles": similar_titles,
+        "awards": awards_summary,
         "trailer": (
             {"url": ((payload.get("latestTrailer") or {}).get("playbackURLs") or [{}])[0].get("url")}
             if ((payload.get("latestTrailer") or {}).get("playbackURLs") or [{}])[0].get("url")

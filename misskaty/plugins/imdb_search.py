@@ -488,6 +488,14 @@ async def imdb_template_menu(_, query: CallbackQuery):
         "• <code>{keywords}</code> - Daftar kata kunci versi hashtag\n"
         "• <code>{keywords_list}</code> - Daftar kata kunci dipisah koma\n"
         "• <code>{awards}</code> - Informasi penghargaan\n"
+        "• <code>{production_status}</code> - Status produksi saat ini\n"
+        "• <code>{total_nominations}</code> - Total nominasi\n"
+        "• <code>{trivia_items}</code> - Daftar trivia (dipisah baris)\n"
+        "• <code>{trivia_count}</code> - Jumlah trivia\n"
+        "• <code>{goof_items}</code> - Daftar goof (dipisah baris)\n"
+        "• <code>{goof_count}</code> - Jumlah goof\n"
+        "• <code>{similar_titles}</code> - Daftar judul mirip\n"
+        "• <code>{similar_count}</code> - Jumlah judul mirip\n"
         "• <code>{availability}</code> - Info layanan streaming\n"
         "• <code>{ott}</code> - Data mentah dari pencarian OTT\n"
         "• <code>{imdb_by}</code> - Tagline @username bot\n"
@@ -1003,6 +1011,15 @@ async def imdb_id_callback(self: Client, query: CallbackQuery):
                 )
                 poster_url = r_json.get("image") or "-"
                 trailer_url = r_json.get("trailer", {}).get("url") or "-"
+                total_nominations = r_json.get("totalNominations") or 0
+                trivia_items = r_json.get("triviaItems") or []
+                goof_items = r_json.get("goofItems") or []
+                similar_titles = r_json.get("similarTitles") or []
+                similar_titles_text = ", ".join(
+                    f"{item.get('title')} ({item.get('year')})" if item.get("year") else item.get("title")
+                    for item in similar_titles
+                    if item.get("title")
+                )
                 payload = {
                     "title": title,
                     "title_with_year": title_with_year,
@@ -1051,6 +1068,14 @@ async def imdb_id_callback(self: Client, query: CallbackQuery):
                     "cast_info": cast_info,
                     "storyline": storyline_text,
                     "keyword": keyword_text,
+                    "production_status": r_json.get("productionStatus") or "-",
+                    "total_nominations": total_nominations,
+                    "trivia_items": "\n".join(trivia_items) if trivia_items else "-",
+                    "trivia_count": len(trivia_items),
+                    "goof_items": "\n".join(goof_items) if goof_items else "-",
+                    "goof_count": len(goof_items),
+                    "similar_titles": similar_titles_text or "-",
+                    "similar_count": len(similar_titles),
                 }
                 template_markup = None
                 rendered, template_buttons = render_imdb_template_with_buttons(
@@ -1396,6 +1421,15 @@ async def imdb_en_callback(self: Client, query: CallbackQuery):
                 )
                 poster_url = r_json.get("image") or "-"
                 trailer_url = r_json.get("trailer", {}).get("url") or "-"
+                total_nominations = r_json.get("totalNominations") or 0
+                trivia_items = r_json.get("triviaItems") or []
+                goof_items = r_json.get("goofItems") or []
+                similar_titles = r_json.get("similarTitles") or []
+                similar_titles_text = ", ".join(
+                    f"{item.get('title')} ({item.get('year')})" if item.get("year") else item.get("title")
+                    for item in similar_titles
+                    if item.get("title")
+                )
                 payload = {
                     "title": title,
                     "title_with_year": title_with_year,
@@ -1444,6 +1478,14 @@ async def imdb_en_callback(self: Client, query: CallbackQuery):
                     "cast_info": cast_info,
                     "storyline": storyline_text,
                     "keyword": keyword_text,
+                    "production_status": r_json.get("productionStatus") or "-",
+                    "total_nominations": total_nominations,
+                    "trivia_items": "\n".join(trivia_items) if trivia_items else "-",
+                    "trivia_count": len(trivia_items),
+                    "goof_items": "\n".join(goof_items) if goof_items else "-",
+                    "goof_count": len(goof_items),
+                    "similar_titles": similar_titles_text or "-",
+                    "similar_count": len(similar_titles),
                 }
                 template_markup = None
                 rendered, template_buttons = render_imdb_template_with_buttons(
