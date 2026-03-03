@@ -157,14 +157,11 @@ async def get_imdb_details_graphql(title_id: str):
             "rating": (node.get("ratingsSummary") or {}).get("aggregateRating"),
         })
 
-    awards_parts = []
-    if total_nominations:
-        awards_parts.append(f"Nominated for {total_nominations} awards")
-    if trivia_items:
-        awards_parts.append(f"{len(trivia_items)} trivia items")
-    if goof_items:
-        awards_parts.append(f"{len(goof_items)} goofs")
-    awards_summary = "; ".join(awards_parts)
+    awards_summary = (
+        f"Nominated for {total_nominations} awards"
+        if total_nominations
+        else ""
+    )
 
     return {
         "name": (payload.get("titleText") or {}).get("text"),

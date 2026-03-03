@@ -139,7 +139,7 @@ async def calc_cb(self, query):
     try:
         text = query.message.text.split("\n")[0].strip().split("=")[0].strip()
         text = "" if f"Made by @{self.me.username}" in text else text
-        inpt = text + query.data
+        inpt = text + data
         result = ""
         if data == "=":
             result = calcExpression(text)
