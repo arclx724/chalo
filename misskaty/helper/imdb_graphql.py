@@ -42,6 +42,8 @@ IMDB_TITLE_QUERY = """query GetTitle($id: ID!) {
     keywords(first: 20) { edges { node { text } } }
     productionStatus { currentProductionStage { text } }
     nominations { total }
+    wins { total }
+    awardNominations(first: 1) { total }
     prestigiousAwardSummary { wins nominations award { text } }
     trivia(first: 5) { edges { node { text { plainText } } } }
     goofs(first: 5) { edges { node { text { plainText } } } }
@@ -163,13 +165,32 @@ async def get_imdb_details_graphql(title_id: str):
     prestigious_wins = prestigious_award.get("wins")
     prestigious_nominations = prestigious_award.get("nominations")
 
+    award_nominations_total = ((payload.get("awardNominations") or {}).get("total"))
+    total_wins = ((payload.get("wins") or {}).get("total"))
+
+    # Prefer broader totals when available.
+    if not isinstance(total_nominations, int):
+        total_nominations = 0
+    if isinstance(award_nominations_total, int) and award_nominations_total > total_nominations:
+        total_nominations = award_nominations_total
+
     awards_parts = []
-    if isinstance(prestigious_wins, int) and prestigious_name:
-        awards_parts.append(f"Won {prestigious_wins} {prestigious_name}")
-    if isinstance(prestigious_nominations, int) and prestigious_name:
-        awards_parts.append(f"{prestigious_nominations} nominations for {prestigious_name}")
-    if total_nominations:
-        awards_parts.append(f"{total_nominations} total nominations")
+    if isinstance(total_wins, int) and total_wins > 0 and total_nominations > 0:
+        awards_parts.append(f"{total_wins} wins & {total_nominations} nominations total")
+    elif isinstance(total_wins, int) and total_wins > 0:
+        awards_parts.append(f"{total_wins} wins total")
+    elif total_nominations > 0:
+        awards_parts.append(f"{total_nominations} nominations total")
+
+    if prestigious_name:
+        if isinstance(prestigious_wins, int) and prestigious_wins > 0:
+            awards_parts.append(
+                f"Won {prestigious_wins} {prestigious_name}{'' if prestigious_wins == 1 else 's'}"
+            )
+        if isinstance(prestigious_nominations, int) and prestigious_nominations > 0:
+            awards_parts.append(
+                f"Nominated for {prestigious_nominations} {prestigious_name}{'' if prestigious_nominations == 1 else 's'}"
+            )
 
     awards_summary = "; ".join(awards_parts)
 
