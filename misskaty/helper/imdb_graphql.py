@@ -61,6 +61,45 @@ IMDB_TITLE_QUERY = """query GetTitle($id: ID!) {
   }
 }"""
 
+IMDB_TITLE_QUERY_FALLBACK = """query GetTitle($id: ID!) {
+  title(id: $id) {
+    id
+    titleText { text }
+    originalTitleText { text }
+    titleType { text }
+    releaseYear { year }
+    releaseDate { day month year }
+    runtime { seconds }
+    ratingsSummary { aggregateRating voteCount }
+    spokenLanguages { spokenLanguages { text } }
+    countriesOfOrigin { countries { text } }
+    certificate { rating }
+    genres { genres { text } }
+    plot { plotText { plainText } }
+    primaryImage { url }
+    principalCredits {
+      category { text }
+      credits { name { id nameText { text } } }
+    }
+    keywords(first: 20) { edges { node { text } } }
+    productionStatus { currentProductionStage { text } }
+    nominations { total }
+    trivia(first: 5) { edges { node { text { plainText } } } }
+    goofs(first: 5) { edges { node { text { plainText } } } }
+    moreLikeThisTitles(first: 5) {
+      edges {
+        node {
+          id
+          titleText { text }
+          releaseYear { year }
+          ratingsSummary { aggregateRating }
+        }
+      }
+    }
+    latestTrailer { playbackURLs { url } }
+  }
+}"""
+
 _MONTHS_ID = [
     "Januari", "Februari", "Maret", "April", "Mei", "Juni",
     "Juli", "Agustus", "September", "Oktober", "November", "Desember",
@@ -80,25 +119,39 @@ def format_imdb_date(raw_date: str | None, locale: str = "id") -> str | None:
     return parsed.strftime("%-d %B %Y")
 
 
+async def _imdb_query(title_id: str, query: str):
+    response = await fetch.post(
+        IMDB_GRAPHQL_URL,
+        headers=IMDB_GRAPHQL_HEADERS,
+        json={
+            "query": query,
+            "operationName": "GetTitle",
+            "variables": {"id": title_id},
+        },
+    )
+    response.raise_for_status()
+    return response.json()
+
+
 async def get_imdb_details_graphql(title_id: str):
     title_id = title_id if str(title_id).startswith("tt") else f"tt{title_id}"
+    body = {}
     try:
-        response = await fetch.post(
-            IMDB_GRAPHQL_URL,
-            headers=IMDB_GRAPHQL_HEADERS,
-            json={
-                "query": IMDB_TITLE_QUERY,
-                "operationName": "GetTitle",
-                "variables": {"id": title_id},
-            },
-        )
-        response.raise_for_status()
-        body = response.json()
+        body = await _imdb_query(title_id, IMDB_TITLE_QUERY)
     except Exception as err:
-        LOGGER.warning(f"IMDb GraphQL request failed for {title_id}: {err}")
-        return {}
+        LOGGER.warning(f"IMDb GraphQL primary query failed for {title_id}: {err}")
 
     payload = body.get("data", {}).get("title") or {}
+    if not payload:
+        if body.get("errors"):
+            LOGGER.warning(f"IMDb GraphQL primary returned errors for {title_id}: {body.get('errors')}")
+        try:
+            body = await _imdb_query(title_id, IMDB_TITLE_QUERY_FALLBACK)
+            payload = body.get("data", {}).get("title") or {}
+        except Exception as err:
+            LOGGER.warning(f"IMDb GraphQL fallback query failed for {title_id}: {err}")
+            return {}
+
     if not payload:
         if body.get("errors"):
             LOGGER.warning(f"IMDb GraphQL returned errors for {title_id}: {body.get('errors')}")
