@@ -72,15 +72,55 @@ def remove_html_tags(text):
 
 
 def calcExpression(text):
-    try:
-        return float(ast.literal_eval(text))
-    except (SyntaxError, ZeroDivisionError):
+    if not text:
         return ""
-    except TypeError:
-        return float(ast.literal_eval(text.replace("(", "*(")))
+
+    expr = str(text).replace("×", "*").replace("÷", "/")
+    expr = re.sub(r"(\d)\(", r"\1*(", expr)
+    expr = re.sub(r"\)(\d)", r")*\1", expr)
+
+    try:
+        node = ast.parse(expr, mode="eval")
+    except SyntaxError:
+        return ""
+
+    def _eval(n):
+        if isinstance(n, ast.Expression):
+            return _eval(n.body)
+        if isinstance(n, ast.Constant) and isinstance(n.value, (int, float)):
+            return float(n.value)
+        if isinstance(n, ast.UnaryOp) and isinstance(n.op, (ast.UAdd, ast.USub)):
+            value = _eval(n.operand)
+            return value if isinstance(n.op, ast.UAdd) else -value
+        if isinstance(n, ast.BinOp) and isinstance(n.op, (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Mod, ast.Pow)):
+            left = _eval(n.left)
+            right = _eval(n.right)
+            if isinstance(n.op, ast.Add):
+                return left + right
+            if isinstance(n.op, ast.Sub):
+                return left - right
+            if isinstance(n.op, ast.Mult):
+                return left * right
+            if isinstance(n.op, ast.Div):
+                if right == 0:
+                    raise ZeroDivisionError
+                return left / right
+            if isinstance(n.op, ast.Mod):
+                if right == 0:
+                    raise ZeroDivisionError
+                return left % right
+            return left**right
+        raise ValueError("Unsupported expression")
+
+    try:
+        result = _eval(node)
+    except (ZeroDivisionError, ValueError, TypeError):
+        return ""
     except Exception as e:
         LOGGER.error(e, exc_info=True)
         return ""
+
+    return float(result)
 
 
 def calc_btn(uid):

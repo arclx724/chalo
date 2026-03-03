@@ -42,6 +42,7 @@ IMDB_TITLE_QUERY = """query GetTitle($id: ID!) {
     keywords(first: 20) { edges { node { text } } }
     productionStatus { currentProductionStage { text } }
     nominations { total }
+    prestigiousAwardSummary { wins nominations award { text } }
     trivia(first: 5) { edges { node { text { plainText } } } }
     goofs(first: 5) { edges { node { text { plainText } } } }
     moreLikeThisTitles(first: 5) {
@@ -157,11 +158,20 @@ async def get_imdb_details_graphql(title_id: str):
             "rating": (node.get("ratingsSummary") or {}).get("aggregateRating"),
         })
 
-    awards_summary = (
-        f"Nominated for {total_nominations} awards"
-        if total_nominations
-        else ""
-    )
+    prestigious_award = payload.get("prestigiousAwardSummary") or {}
+    prestigious_name = ((prestigious_award.get("award") or {}).get("text") or "").strip()
+    prestigious_wins = prestigious_award.get("wins")
+    prestigious_nominations = prestigious_award.get("nominations")
+
+    awards_parts = []
+    if isinstance(prestigious_wins, int) and prestigious_name:
+        awards_parts.append(f"Won {prestigious_wins} {prestigious_name}")
+    if isinstance(prestigious_nominations, int) and prestigious_name:
+        awards_parts.append(f"{prestigious_nominations} nominations for {prestigious_name}")
+    if total_nominations:
+        awards_parts.append(f"{total_nominations} total nominations")
+
+    awards_summary = "; ".join(awards_parts)
 
     return {
         "name": (payload.get("titleText") or {}).get("text"),
