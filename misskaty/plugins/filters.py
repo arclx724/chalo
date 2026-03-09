@@ -60,11 +60,11 @@ Formatting & Button Samples:
 ```shell
 echo "hello"
 ```
-- URL button: [Open](buttonurl://https://example.com)
+- URL button: `[Open](buttonurl://https://example.com)`
 - Same row button:
-[One](buttonurl://https://example.com)
-[Two](buttonurl://https://example.com:same)
-- Note deep-link button: [Open Note](buttonurl://#notename)
+`[One](buttonurl://https://example.com)`
+`[Two](buttonurl://https://example.com:same)`
+- Note deep-link button: `[Open Note](buttonurl://#notename)`
 
 Tip: use /filter [name] by replying to text/media, filter supports markdown/html text + inline buttons.
 

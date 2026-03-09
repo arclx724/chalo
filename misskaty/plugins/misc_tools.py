@@ -10,6 +10,7 @@ import asyncio
 import contextlib
 import html
 import json
+import operator as op
 import os
 import re
 import sys
@@ -72,12 +73,40 @@ def remove_html_tags(text):
 
 
 def calcExpression(text):
-    try:
-        return float(ast.literal_eval(text))
-    except (SyntaxError, ZeroDivisionError):
+    text = (text or "").strip().replace("×", "*").replace("÷", "/")
+    if not text:
         return ""
-    except TypeError:
-        return float(ast.literal_eval(text.replace("(", "*(")))
+
+    allowed_ops = {
+        ast.Add: op.add,
+        ast.Sub: op.sub,
+        ast.Mult: op.mul,
+        ast.Div: op.truediv,
+        ast.Mod: op.mod,
+        ast.Pow: op.pow,
+        ast.USub: op.neg,
+        ast.UAdd: op.pos,
+    }
+
+    def _eval(node):
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+            return float(node.value)
+        if isinstance(node, ast.Num):
+            return float(node.n)
+        if isinstance(node, ast.BinOp) and type(node.op) in allowed_ops:
+            return allowed_ops[type(node.op)](_eval(node.left), _eval(node.right))
+        if isinstance(node, ast.UnaryOp) and type(node.op) in allowed_ops:
+            return allowed_ops[type(node.op)](_eval(node.operand))
+        raise ValueError("Invalid expression")
+
+    try:
+        tree = ast.parse(text, mode="eval")
+        value = _eval(tree.body)
+        if abs(value - int(value)) < 1e-12:
+            return int(value)
+        return round(value, 10)
+    except (SyntaxError, ZeroDivisionError, ValueError, TypeError):
+        return ""
     except Exception as e:
         LOGGER.error(e, exc_info=True)
         return ""

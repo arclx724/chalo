@@ -65,6 +65,8 @@ def build_ydl_opts(extra: dict | None = None) -> dict:
         "quiet": True,
         "no_warnings": True,
         "js_runtimes": {"deno": {"path": "/root/.deno/bin/deno"}},
+        "socket_timeout": 20,
+        "retries": 1,
     }
     if cookie_file := get_cookie_file():
         opts["cookiefile"] = cookie_file
@@ -171,7 +173,7 @@ async def animate_processing(message: Message, title: str, stop_event: asyncio.E
         await asyncio.sleep(1.2)
 
 
-async def yt_extract(url: str, flat: bool = False) -> dict:
+async def yt_extract(url: str, flat: bool = False, timeout: int = 45) -> dict:
     def _extract():
         opts = build_ydl_opts({"skip_download": True})
         if flat:
@@ -179,7 +181,7 @@ async def yt_extract(url: str, flat: bool = False) -> dict:
         with YoutubeDL(opts) as ydl:
             return ydl.extract_info(url, download=False)
 
-    return await asyncio.to_thread(_extract)
+    return await asyncio.wait_for(asyncio.to_thread(_extract), timeout=timeout)
 
 
 async def download_thumb_file(url: str | None, job_id: str, output_dir: str) -> str | None:
@@ -285,6 +287,8 @@ async def ytdownv2(_, ctx: Message, strings):
         info = await yt_extract(url)
     except DownloadError as err:
         return await progress_msg.edit_text(f"<code>{format_ytdl_error(err)}</code>", parse_mode=ParseMode.HTML)
+    except asyncio.TimeoutError:
+        return await progress_msg.edit_text("❌ Request timed out while contacting yt-dlp source.")
     except Exception as err:
         return await progress_msg.edit_text(
             f"{strings('err_parse')}\n\n<code>{format_ytdl_error(err)}</code>",

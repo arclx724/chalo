@@ -50,6 +50,13 @@ def _normalize_button_target(target: str) -> str:
     if target.startswith("#"):
         note_name = target[1:]
         return f"https://t.me/{BOT_USERNAME}?start={note_name}"
+
+    if target.startswith(("http://", "https://", "tg://", "mailto:")):
+        return target
+
+    if re.match(r"^[\w.-]+\.[a-z]{2,}(?:[/:?#].*)?$", target, flags=re.I):
+        return f"https://{target}"
+
     return target
 
 
