@@ -3,6 +3,7 @@
 # * @projectName   MissKatyPyro
 # * Copyright ©YasirPedia All rights reserved
 import asyncio
+from html import escape
 import os
 import time
 from pathlib import Path
@@ -65,6 +66,15 @@ def build_ydl_opts(extra: dict | None = None) -> dict:
     if extra:
         opts.update(extra)
     return opts
+
+
+
+
+def format_ytdl_error(err: Exception) -> str:
+    msg = str(err).strip()
+    if msg.startswith("ERROR: "):
+        msg = msg[7:]
+    return escape(msg)
 
 
 def resolve_downloaded_file(output_dir: str, job_id: str, expected_ext: str | None = None) -> str | None:
@@ -268,10 +278,13 @@ async def ytdownv2(_, ctx: Message, strings):
     anim_task = asyncio.create_task(animate_processing(progress_msg, PROCESS_TEXT, stop_event))
     try:
         info = await yt_extract(url)
+    except DownloadError as err:
+        return await progress_msg.edit_text(f"<code>{format_ytdl_error(err)}</code>", parse_mode=ParseMode.HTML)
     except Exception as err:
-        stop_event.set()
-        await anim_task
-        return await progress_msg.edit_text(f"{strings('err_parse')}\n\n<code>{err}</code>", parse_mode=ParseMode.HTML)
+        return await progress_msg.edit_text(
+            f"{strings('err_parse')}\n\n<code>{format_ytdl_error(err)}</code>",
+            parse_mode=ParseMode.HTML,
+        )
     finally:
         stop_event.set()
         await anim_task
@@ -452,10 +465,16 @@ async def ytdl_download_callback(self: Client, cq: CallbackQuery, strings):
         return await cq.edit_message_caption("❌ Download cancelled.")
     except DownloadError as err:
         ACTIVE_DOWNLOADS.pop(job_id, None)
-        return await cq.edit_message_caption(f"❌ Download failed: <code>{err}</code>", parse_mode=ParseMode.HTML)
+        return await cq.edit_message_caption(
+            f"❌ Download failed: <code>{format_ytdl_error(err)}</code>",
+            parse_mode=ParseMode.HTML,
+        )
     except Exception as err:
         ACTIVE_DOWNLOADS.pop(job_id, None)
-        return await cq.edit_message_caption(f"❌ Download error: <code>{err}</code>", parse_mode=ParseMode.HTML)
+        return await cq.edit_message_caption(
+            f"❌ Download error: <code>{format_ytdl_error(err)}</code>",
+            parse_mode=ParseMode.HTML,
+        )
 
     if "%" in downloaded_file or not os.path.exists(downloaded_file):
         downloaded_file = resolve_downloaded_file(output_dir, "", option.get("ext"))
