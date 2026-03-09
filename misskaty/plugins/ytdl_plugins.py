@@ -51,6 +51,11 @@ def format_progress_bar(percentage: float) -> str:
 
 
 def get_cookie_file() -> str | None:
+    configured_cookie = os.getenv("YTDL_COOKIE_FILE")
+    if configured_cookie:
+        cookie_file = Path(configured_cookie).expanduser()
+        return str(cookie_file) if cookie_file.is_file() else None
+
     cookie_file = Path("cookies.txt")
     return str(cookie_file) if cookie_file.is_file() else None
 

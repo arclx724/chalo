@@ -54,6 +54,38 @@ To use more words in a filter use.
 /stopall To delete all the filters in a chat (permanently).
 
 You can use markdown or html to save text too.
+
+Markdown Formatting
+
+You can format your message using bold, italics, underline, and much more. Go ahead and experiment!
+
+Supported markdown:
+- `code words`: Backticks are used for monospace fonts. Shows as: code words.
+- _italic words_: Underscores are used for italic fonts. Shows as: italic words.
+- *bold words*: Asterisks are used for bold fonts. Shows as: bold words.
+- ~strikethrough~: Tildes are used for strikethrough. Shows as: strikethrough.
+- __underline__: Double underscores are used for underlines. Shows as: underline. NOTE: Some clients try to be smart and interpret it as italic. In that case, try to use your app's built-in formatting.
+- ||spoiler||: Double vertical bars are used for spoilers. Shows as: spoiler.
+- ```shell
+echo "hi"```: Triple backticks are used for codeblocks. You can also specify the code language in the firstline (here, "shell"). Shows as: echo "hi"
+- > quote: You can quote a line by prefixing it with >. Shows as: quote
+- **> first line
+> second
+> third
+> hidden||: You can create a multiline quote by starting a quote with **>, and ending it with ||. This will show the first three lines, and then "collapse" the rest. Shows as: first line
+second
+third
+hidden
+- [hyperlink](missrose.org): This is the formatting used for hyperlinks. Shows as: hyperlink.
+- [My button](buttonurl://missrose.org): This is the formatting used for creating buttons. This example will create a button named "My button" which opens missrose.org when clicked.
+If you would like to send buttons on the same row, use the :same formatting. EG:
+[button 1](buttonurl://example.com)
+[button 2](buttonurl://example.com:same)
+[button 3](buttonurl://example.com)
+This will show button 1 and 2 on the same line, with 3 underneath.
+Alternatively, check out the button generator to help with the button syntax.
+- [note button](buttonurl://#notename): This syntax will allow you to create a button which links to a note. When clicked, the user will be redirected to the bot's PM to see the note.
+
 """
 
 

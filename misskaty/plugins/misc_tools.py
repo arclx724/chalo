@@ -137,10 +137,11 @@ async def calc_cb(self, query):
     if query.from_user.id != int(uid):
         return await query.answer("Who are you??", show_alert=True, cache_time=5)
     try:
-        text = query.message.text.split("\n")[0].strip().split("=")[0].strip()
-        text = "" if f"Made by @{self.me.username}" in text else text
-        inpt = text + query.data
+        current_text = (query.message.text or "").split("\n")[0].strip().split("=")[0].strip()
+        text = "" if f"Made by @{self.me.username}" in current_text else current_text
+        inpt = text + data
         result = ""
+
         if data == "=":
             result = calcExpression(text)
             text = ""
@@ -152,24 +153,22 @@ async def calc_cb(self, query):
             dot_dot_check = re.findall(r"(\d*\.\.|\d*\.\d+\.)", inpt)
             opcheck = re.findall(r"([*/\+-]{2,})", inpt)
             if not dot_dot_check and not opcheck:
-                if strOperands := re.findall(r"(\.\d+|\d+\.\d+|\d+)", inpt):
+                if re.findall(r"(\.\d+|\d+\.\d+|\d+)", inpt):
                     text += data
                     result = calcExpression(text)
 
-        text = f"{text:<50}"
-        if result:
-            if text:
-                text += f"\n{result:>50}"
-            else:
-                text = result
-        text += f"\n\nMade by @{self.me.username}"
+        out = f"{text:<50}"
+        if result != "":
+            out += f"\n{result:>50}"
+        out += f"\n\nMade by @{self.me.username}"
         await query.message.edit(
-            text=text,
+            text=out,
             link_preview_options=pyro_types.LinkPreviewOptions(is_disabled=True),
             reply_markup=calc_btn(query.from_user.id),
         )
     except Exception as error:
-        LOGGER.error(error)
+        LOGGER.error(error, exc_info=True)
+        await query.answer("Calculator error", show_alert=True)
 
 
 @app.on_cmd("removebg")
