@@ -54,6 +54,20 @@ To change caption of any files use.\n/save [NOTE_NAME] or /addnote [NOTE_NAME] [
 
 /delete [NOTE_NAME] or delnote [NOTE_NAME] To Delete A Note.
 /deleteall To delete all the notes in a chat (permanently).
+Formatting & Button Samples:
+- *bold* _italic_ __underline__ ~strike~ ||spoiler||
+- `inline code` and:
+```shell
+echo "hello"
+```
+- URL button: [Open](buttonurl://https://example.com)
+- Same row button:
+[One](buttonurl://https://example.com)
+[Two](buttonurl://https://example.com:same)
+- Note deep-link button: [Open Note](buttonurl://#notename)
+
+Tip: save a note by replying text/media, then use #notename to call it.
+
 
 
 """

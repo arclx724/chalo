@@ -54,6 +54,20 @@ To use more words in a filter use.
 /stopall To delete all the filters in a chat (permanently).
 
 You can use markdown or html to save text too.
+Formatting & Button Samples:
+- *bold* _italic_ __underline__ ~strike~ ||spoiler||
+- `inline code` and:
+```shell
+echo "hello"
+```
+- URL button: [Open](buttonurl://https://example.com)
+- Same row button:
+[One](buttonurl://https://example.com)
+[Two](buttonurl://https://example.com:same)
+- Note deep-link button: [Open Note](buttonurl://#notename)
+
+Tip: use /filter [name] by replying to text/media, filter supports markdown/html text + inline buttons.
+
 
 
 """
