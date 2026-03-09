@@ -204,11 +204,11 @@ async def generate_thumb_with_ffmpeg(video_file: str, job_id: str, output_dir: s
     cmd = [
         "ffmpeg",
         "-y",
-        "-ss",
-        "00:00:01",
         "-i",
         video_file,
-        "-vframes",
+        "-vf",
+        "thumbnail,scale=640:-1",
+        "-frames:v",
         "1",
         thumb_path,
     ]
@@ -217,8 +217,29 @@ async def generate_thumb_with_ffmpeg(video_file: str, job_id: str, output_dir: s
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    await process.communicate()
-    if process.returncode == 0 and os.path.exists(thumb_path):
+    _, stderr = await process.communicate()
+    if process.returncode == 0 and os.path.exists(thumb_path) and os.path.getsize(thumb_path) > 0:
+        return thumb_path
+
+    # fallback for very short or odd videos
+    cmd_fallback = [
+        "ffmpeg",
+        "-y",
+        "-ss",
+        "00:00:00.200",
+        "-i",
+        video_file,
+        "-frames:v",
+        "1",
+        thumb_path,
+    ]
+    process_fb = await asyncio.create_subprocess_exec(
+        *cmd_fallback,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    await process_fb.communicate()
+    if process_fb.returncode == 0 and os.path.exists(thumb_path) and os.path.getsize(thumb_path) > 0:
         return thumb_path
     return None
 
