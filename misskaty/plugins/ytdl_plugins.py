@@ -4,11 +4,13 @@
 # * Copyright ©YasirPedia All rights reserved
 import asyncio
 from html import escape
+from io import BytesIO
 import os
 import time
 from pathlib import Path
 from uuid import uuid4
 
+from PIL import Image
 from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
 from pyrogram.errors import MessageNotModified, QueryIdInvalid, WebpageMediaEmpty
@@ -191,10 +193,14 @@ async def download_thumb_file(url: str | None, job_id: str, output_dir: str) -> 
         response = await fetch.get(url)
         if response.status_code != 200:
             return None
+
         thumb_path = os.path.join(output_dir, f"{job_id}_thumb.jpg")
-        with open(thumb_path, "wb") as file:
-            file.write(response.content)
-        return thumb_path
+        image = Image.open(BytesIO(response.content)).convert("RGB")
+        image.thumbnail((1280, 1280))
+        image.save(thumb_path, format="JPEG", quality=85)
+        if os.path.exists(thumb_path) and os.path.getsize(thumb_path) > 0:
+            return thumb_path
+        return None
     except Exception:
         return None
 

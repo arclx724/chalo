@@ -230,7 +230,7 @@ async def filters_re(self, message):
                     keyboard = extract_text_and_keyb(ikb, data, chat_id=chat_id)
                     if keyboard:
                         data, keyb = keyboard
-                data, keyb, send_opts = apply_fillings(data, message, from_user, keyb)
+                data, keyb, send_opts = await apply_fillings(data, message, from_user, keyb)
             else:
                 send_opts = {"disable_notification": False, "protect_content": False, "media_spoiler": False, "preview": False, "preview_top": False}
             replied_message = message.reply_to_message

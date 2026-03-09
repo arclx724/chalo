@@ -105,10 +105,10 @@ async def start(self, ctx: Message, strings):
         name = (ctx.text.split(None, 1)[1]).lower()
         if "_" in name:
             module = name.split("_", 1)[1]
-            text = (
-                strings("help_name").format(mod=HELPABLE[module].__MODULE__)
-                + HELPABLE[module].__HELP__
-            )
+            mod_obj = HELPABLE.get(module)
+            if not mod_obj:
+                return await ctx.reply("Unknown help module.")
+            text = strings("help_name").format(mod=mod_obj.__MODULE__) + mod_obj.__HELP__
             await ctx.reply(
                 text,
                 link_preview_options=pyro_types.LinkPreviewOptions(is_disabled=True),
@@ -242,10 +242,10 @@ async def help_button(self: Client, query: CallbackQuery, strings):
     )
     if mod_match:
         module = mod_match[1].replace(" ", "_")
-        text = (
-            strings("help_name").format(mod=HELPABLE[module].__MODULE__)
-            + HELPABLE[module].__HELP__
-        )
+        mod_obj = HELPABLE.get(module)
+        if not mod_obj:
+            return await query.answer("Module not found", show_alert=True)
+        text = strings("help_name").format(mod=mod_obj.__MODULE__) + mod_obj.__HELP__
         if module == "federation":
             return await query.message.edit(
                 text=text,

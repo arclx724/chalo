@@ -218,7 +218,7 @@ async def send_note_message(message, note: dict, from_user, source_chat_id: int)
             keyboard = extract_text_and_keyb(ikb, data, chat_id=source_chat_id)
             if keyboard:
                 data, keyb = keyboard
-        data, keyb, send_opts = apply_fillings(data, message, from_user, keyb)
+        data, keyb, send_opts = await apply_fillings(data, message, from_user, keyb)
     else:
         send_opts = {"disable_notification": False, "protect_content": False, "media_spoiler": False, "preview": False, "preview_top": False}
 

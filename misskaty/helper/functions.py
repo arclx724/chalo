@@ -96,13 +96,16 @@ def _parse_buttonurl_syntax(text: str, chat_id: int | None = None):
 
 
 
-def _build_rules_button(message):
+async def _build_rules_button(message):
+    from database.rules_db import get_rules_button
+
     if message.chat.username:
-        return InlineKeyboardButton("Rules", url=f"https://t.me/{message.chat.username}")
+        label = await get_rules_button(message.chat.id)
+        return InlineKeyboardButton(label, url=f"https://t.me/{message.chat.username}")
     return None
 
 
-def apply_fillings(text: str | None, message: Message, from_user, keyb: InlineKeyboardMarkup | None = None):
+async def apply_fillings(text: str | None, message: Message, from_user, keyb: InlineKeyboardMarkup | None = None):
     text = text or ""
     first = from_user.first_name if getattr(from_user, "first_name", None) else ""
     last = from_user.last_name if getattr(from_user, "last_name", None) else ""
@@ -138,7 +141,7 @@ def apply_fillings(text: str | None, message: Message, from_user, keyb: InlineKe
     rules_same_row = "{rules:same}" in text
     text = text.replace("{rules}", "").replace("{rules:same}", "")
 
-    rules_btn = _build_rules_button(message)
+    rules_btn = await _build_rules_button(message)
     if rules_btn:
         if keyb:
             rows = deepcopy(keyb.inline_keyboard)
