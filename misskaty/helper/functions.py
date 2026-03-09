@@ -1,12 +1,13 @@
 from datetime import datetime, timedelta
+import re
 from re import findall
 from re import sub as re_sub
 from string import ascii_lowercase
 
 from pyrogram import enums
-from pyrogram.types import Message
+from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from misskaty import app
+from misskaty import BOT_USERNAME, app
 
 
 def get_urls_from_text(text: str) -> bool:
@@ -31,6 +32,58 @@ def extract_urls(reply_markup):
                     )
                     urls.append((f"{name}", button.text, button.url))
     return urls
+
+
+
+
+def has_button_markup(text: str | None) -> bool:
+    if not text:
+        return False
+    return bool(
+        re.search(r"\[[^\]]+\]\([^\)]+\)", text)
+        or re.search(r"\[[^\],]+\s*,\s*[^\]]+\]", text)
+    )
+
+
+def _normalize_button_target(target: str) -> str:
+    target = target.strip()
+    if target.startswith("#"):
+        note_name = target[1:]
+        return f"https://t.me/{BOT_USERNAME}?start={note_name}"
+    return target
+
+
+def _parse_buttonurl_syntax(text: str):
+    rows = []
+    current_row = []
+
+    def _repl(match: re.Match):
+        label = match.group(1).strip()
+        raw_target = match.group(2).strip()
+        if not raw_target.lower().startswith("buttonurl://"):
+            return match.group(0)
+
+        target = raw_target[len("buttonurl://") :]
+        same_row = target.endswith(":same")
+        if same_row:
+            target = target[: -len(":same")]
+
+        target = _normalize_button_target(target)
+        if get_urls_from_text(target):
+            btn = InlineKeyboardButton(text=label, url=target)
+            if same_row and current_row:
+                current_row.append(btn)
+            else:
+                if current_row:
+                    rows.append(current_row.copy())
+                    current_row.clear()
+                current_row.append(btn)
+        return ""
+
+    cleaned = re.sub(r"\[([^\]]+)\]\(([^\)]+)\)", _repl, text)
+    if current_row:
+        rows.append(current_row.copy())
+    return cleaned.strip(), (InlineKeyboardMarkup(rows) if rows else None)
 
 
 async def alpha_to_int(user_id_alphabet: str) -> int:
@@ -135,13 +188,17 @@ def extract_text_and_keyb(ikb, text: str, row_width: int = 2):
         text = text.strip()
         text = text.removeprefix("`")
         text = text.removesuffix("`")
-        text, keyb = text.split("~")
 
+        cleaned_text, parsed_keyboard = _parse_buttonurl_syntax(text)
+        if parsed_keyboard:
+            return cleaned_text, parsed_keyboard
+
+        text, keyb = text.split("~")
         keyb = findall(r"\[.+\,.+\]", keyb)
         for btn_str in keyb:
             btn_str = re_sub(r"[\[\]]", "", btn_str)
             btn_str = btn_str.split(",")
-            btn_txt, btn_url = btn_str[0], btn_str[1].strip()
+            btn_txt, btn_url = btn_str[0], _normalize_button_target(btn_str[1].strip())
 
             if not get_urls_from_text(btn_url):
                 continue
