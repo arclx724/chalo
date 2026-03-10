@@ -30,7 +30,7 @@ from database.imdb_db import get_imdb_by, get_imdb_layout_fields, get_imdb_templ
 from misskaty import BOT_USERNAME, app, user
 from misskaty.helper import GENRES_EMOJI, fetch, gtranslate, post_to_telegraph, search_jw
 from misskaty.plugins.dev import shell_exec
-from misskaty.plugins.misc_tools import calc_btn
+from misskaty.plugins.misc_tools import calc_btn, calcExpression
 from misskaty.helper.imdb_graphql import format_imdb_date, get_imdb_details_graphql
 from misskaty.vars import USER_SESSION
 from utils import demoji
@@ -195,17 +195,31 @@ async def inline_menu(self, inline_query: InlineQuery):
                 )
             ]
         else:
-            data = inline_query.query.replace("×", "*").replace("÷", "/")
-            result = str(eval(text))
-            answers = [
-                InlineQueryResultArticle(
-                    title="Answer",
-                    description=f"Result: {result}",
-                    input_message_content=InputTextMessageContent(
-                        message_text=f"{data} = {result}", link_preview_options=pyro_types.LinkPreviewOptions(is_disabled=True)
-                    ),
-                )
-            ]
+            data = inline_query.query.split(None, 1)[1].strip().replace("×", "*").replace("÷", "/")
+            result = calcExpression(data)
+            if result == "":
+                answers = [
+                    InlineQueryResultArticle(
+                        title="Calculator",
+                        description="Invalid expression",
+                        input_message_content=InputTextMessageContent(
+                            message_text="Invalid expression",
+                            link_preview_options=pyro_types.LinkPreviewOptions(is_disabled=True),
+                        ),
+                        reply_markup=calc_btn(inline_query.from_user.id),
+                    )
+                ]
+            else:
+                answers = [
+                    InlineQueryResultArticle(
+                        title="Answer",
+                        description=f"Result: {result}",
+                        input_message_content=InputTextMessageContent(
+                            message_text=f"{data} = {result}",
+                            link_preview_options=pyro_types.LinkPreviewOptions(is_disabled=True),
+                        ),
+                    )
+                ]
         await inline_query.answer(
             results=answers,
             is_gallery=False,

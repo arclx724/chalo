@@ -43,12 +43,14 @@ langdict = cache_localizations(jsons)
 def get_locale_string(
     dic: dict, language: str, default_context: str, key: str, context: str = None
 ) -> str:
+    default_dic = langdict.get(default_language, {}).get(default_context, {})
+
     if context:
         default_context = context
-        dic = langdict[language].get(context, langdict[default_language][context])
-    res: str = (
-        dic.get(key) or langdict[default_language][default_context].get(key) or key
-    )
+        default_dic = langdict.get(default_language, {}).get(default_context, {})
+        dic = langdict.get(language, {}).get(context, default_dic)
+
+    res: str = dic.get(key) or default_dic.get(key) or key
     return res
 
 

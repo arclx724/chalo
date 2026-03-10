@@ -39,7 +39,7 @@ from misskaty import app
 from misskaty.core.decorator.errors import capture_err
 from misskaty.core.decorator.permissions import adminsOnly, member_permissions
 from misskaty.core.keyboard import ikb
-from misskaty.helper.functions import extract_text_and_keyb, extract_urls
+from misskaty.helper.functions import apply_fillings, extract_text_and_keyb, extract_urls, has_button_markup
 from misskaty.vars import COMMAND_HANDLER
 
 __MODULE__ = "Filters"
@@ -54,6 +54,38 @@ To use more words in a filter use.
 /stopall To delete all the filters in a chat (permanently).
 
 You can use markdown or html to save text too.
+Formatting & Button Samples:
+- *bold* _italic_ __underline__ ~strike~ ||spoiler||
+- `inline code` and:
+```shell
+echo "hello"
+```
+- URL button: `[Open](buttonurl://https://example.com)`
+- Same row button:
+`[One](buttonurl://https://example.com)`
+`[Two](buttonurl://https://example.com:same)`
+- Note deep-link button: `[Open Note](buttonurl://#notename)`
+
+Tip: use /filter [name] by replying to text/media, filter supports markdown/html text + inline buttons.
+
+Fillings
+
+Supported fillings:
+- {first}: The user's first name.
+- {last}: The user's last name.
+- {fullname}: The user's full name.
+- {username}: The user's username. If they don't have one, mentions the user instead.
+- {mention}: Mentions the user with their firstname.
+- {id}: The user's ID.
+- {chatname}: The chat's name.
+- {rules}: Create a button to the chat's rules on a new row of buttons.
+- {rules:same}: Create a button to the chat's rules, on the same row as the previous buttons
+- {preview}: Enables link previews for this message.
+- {preview:top}: Shows the link preview for this message ABOVE the message text.
+- {nonotif}: Disables the notification for this message.
+- {protect}: Stop this message from being forwarded, or screenshotted.
+- {mediaspoiler}: Marks the message photo/video/animation as being a spoiler.
+
 """
 
 
@@ -116,7 +148,7 @@ async def save_filters(_, message):
         if replied_message.voice:
             _type = "voice"
             file_id = replied_message.voice.file_id
-        if replied_message.reply_markup and not re.findall(r"\[.+\,.+\]", data):
+        if replied_message.reply_markup and not has_button_markup(data):
             if urls := extract_urls(replied_message.reply_markup):
                 response = "\n".join(
                     [f"{name}=[{text}, {url}]" for name, text, url in urls]
@@ -194,18 +226,13 @@ async def filters_re(self, message):
             file_id = _filter.get("file_id")
             keyb = None
             if data:
-                if "{chat}" in data:
-                    data = data.replace(
-                        "{chat}", message.chat.title
-                    )
-                if "{name}" in data:
-                    data = data.replace(
-                        "{name}", (from_user.mention if message.from_user else from_user.title)
-                    )
-                if re.findall(r"\[.+\,.+\]", data):
-                    keyboard = extract_text_and_keyb(ikb, data)
+                if has_button_markup(data):
+                    keyboard = extract_text_and_keyb(ikb, data, chat_id=chat_id)
                     if keyboard:
                         data, keyb = keyboard
+                data, keyb, send_opts = await apply_fillings(data, message, from_user, keyb)
+            else:
+                send_opts = {"disable_notification": False, "protect_content": False, "media_spoiler": False, "preview": False, "preview_top": False}
             replied_message = message.reply_to_message
             if replied_message:
                 replied_user = replied_message.from_user if replied_message.from_user else replied_message.sender_chat
@@ -218,7 +245,12 @@ async def filters_re(self, message):
                 await message.reply(
                     text=data,
                     reply_markup=keyb,
-                    link_preview_options=pyro_types.LinkPreviewOptions(is_disabled=True),
+                    link_preview_options=pyro_types.LinkPreviewOptions(
+                        is_disabled=not send_opts["preview"],
+                        show_above_text=send_opts["preview_top"],
+                    ),
+                    disable_notification=send_opts["disable_notification"],
+                    protect_content=send_opts["protect_content"],
                 )
             else:
                 if not file_id:
@@ -226,46 +258,65 @@ async def filters_re(self, message):
             if data_type == "sticker":
                 await message.reply_sticker(
                     sticker=file_id,
+                    disable_notification=send_opts["disable_notification"],
+                    protect_content=send_opts["protect_content"],
                 )
             if data_type == "animation":
                 await message.reply_animation(
                     animation=file_id,
                     caption=data,
                     reply_markup=keyb,
+                    disable_notification=send_opts["disable_notification"],
+                    protect_content=send_opts["protect_content"],
+                    has_spoiler=send_opts["media_spoiler"],
                 )
             if data_type == "photo":
                 await message.reply_photo(
                     photo=file_id,
                     caption=data,
                     reply_markup=keyb,
+                    disable_notification=send_opts["disable_notification"],
+                    protect_content=send_opts["protect_content"],
+                    has_spoiler=send_opts["media_spoiler"],
                 )
             if data_type == "document":
                 await message.reply_document(
                     document=file_id,
                     caption=data,
                     reply_markup=keyb,
+                    disable_notification=send_opts["disable_notification"],
+                    protect_content=send_opts["protect_content"],
                 )
             if data_type == "video":
                 await message.reply_video(
                     video=file_id,
                     caption=data,
                     reply_markup=keyb,
+                    disable_notification=send_opts["disable_notification"],
+                    protect_content=send_opts["protect_content"],
+                    has_spoiler=send_opts["media_spoiler"],
                 )
             if data_type == "video_note":
                 await message.reply_video_note(
                     video_note=file_id,
+                    disable_notification=send_opts["disable_notification"],
+                    protect_content=send_opts["protect_content"],
                 )
             if data_type == "audio":
                 await message.reply_audio(
                     audio=file_id,
                     caption=data,
                     reply_markup=keyb,
+                    disable_notification=send_opts["disable_notification"],
+                    protect_content=send_opts["protect_content"],
                 )
             if data_type == "voice":
                 await message.reply_voice(
                     voice=file_id,
                     caption=data,
                     reply_markup=keyb,
+                    disable_notification=send_opts["disable_notification"],
+                    protect_content=send_opts["protect_content"],
                 )
             return
 

@@ -3,11 +3,14 @@
 # * @projectName   MissKatyPyro
 # * Copyright ©YasirPedia All rights reserved
 import asyncio
+from html import escape
+from io import BytesIO
 import os
 import time
 from pathlib import Path
 from uuid import uuid4
 
+from PIL import Image
 from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
 from pyrogram.errors import MessageNotModified, QueryIdInvalid, WebpageMediaEmpty
@@ -50,6 +53,11 @@ def format_progress_bar(percentage: float) -> str:
 
 
 def get_cookie_file() -> str | None:
+    configured_cookie = os.getenv("YTDL_COOKIE_FILE")
+    if configured_cookie:
+        cookie_file = Path(configured_cookie).expanduser()
+        return str(cookie_file) if cookie_file.is_file() else None
+
     cookie_file = Path("cookies.txt")
     return str(cookie_file) if cookie_file.is_file() else None
 
@@ -59,12 +67,23 @@ def build_ydl_opts(extra: dict | None = None) -> dict:
         "quiet": True,
         "no_warnings": True,
         "js_runtimes": {"deno": {"path": "/root/.deno/bin/deno"}},
+        "socket_timeout": 20,
+        "retries": 1,
     }
     if cookie_file := get_cookie_file():
         opts["cookiefile"] = cookie_file
     if extra:
         opts.update(extra)
     return opts
+
+
+
+
+def format_ytdl_error(err: Exception) -> str:
+    msg = str(err).strip()
+    if msg.startswith("ERROR: "):
+        msg = msg[7:]
+    return escape(msg)
 
 
 def resolve_downloaded_file(output_dir: str, job_id: str, expected_ext: str | None = None) -> str | None:
@@ -156,7 +175,7 @@ async def animate_processing(message: Message, title: str, stop_event: asyncio.E
         await asyncio.sleep(1.2)
 
 
-async def yt_extract(url: str, flat: bool = False) -> dict:
+async def yt_extract(url: str, flat: bool = False, timeout: int = 45) -> dict:
     def _extract():
         opts = build_ydl_opts({"skip_download": True})
         if flat:
@@ -164,7 +183,7 @@ async def yt_extract(url: str, flat: bool = False) -> dict:
         with YoutubeDL(opts) as ydl:
             return ydl.extract_info(url, download=False)
 
-    return await asyncio.to_thread(_extract)
+    return await asyncio.wait_for(asyncio.to_thread(_extract), timeout=timeout)
 
 
 async def download_thumb_file(url: str | None, job_id: str, output_dir: str) -> str | None:
@@ -174,10 +193,14 @@ async def download_thumb_file(url: str | None, job_id: str, output_dir: str) -> 
         response = await fetch.get(url)
         if response.status_code != 200:
             return None
+
         thumb_path = os.path.join(output_dir, f"{job_id}_thumb.jpg")
-        with open(thumb_path, "wb") as file:
-            file.write(response.content)
-        return thumb_path
+        image = Image.open(BytesIO(response.content)).convert("RGB")
+        image.thumbnail((1280, 1280))
+        image.save(thumb_path, format="JPEG", quality=85)
+        if os.path.exists(thumb_path) and os.path.getsize(thumb_path) > 0:
+            return thumb_path
+        return None
     except Exception:
         return None
 
@@ -187,11 +210,11 @@ async def generate_thumb_with_ffmpeg(video_file: str, job_id: str, output_dir: s
     cmd = [
         "ffmpeg",
         "-y",
-        "-ss",
-        "00:00:01",
         "-i",
         video_file,
-        "-vframes",
+        "-vf",
+        "thumbnail,scale=640:-1",
+        "-frames:v",
         "1",
         thumb_path,
     ]
@@ -200,8 +223,29 @@ async def generate_thumb_with_ffmpeg(video_file: str, job_id: str, output_dir: s
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    await process.communicate()
-    if process.returncode == 0 and os.path.exists(thumb_path):
+    _, stderr = await process.communicate()
+    if process.returncode == 0 and os.path.exists(thumb_path) and os.path.getsize(thumb_path) > 0:
+        return thumb_path
+
+    # fallback for very short or odd videos
+    cmd_fallback = [
+        "ffmpeg",
+        "-y",
+        "-ss",
+        "00:00:00.200",
+        "-i",
+        video_file,
+        "-frames:v",
+        "1",
+        thumb_path,
+    ]
+    process_fb = await asyncio.create_subprocess_exec(
+        *cmd_fallback,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    await process_fb.communicate()
+    if process_fb.returncode == 0 and os.path.exists(thumb_path) and os.path.getsize(thumb_path) > 0:
         return thumb_path
     return None
 
@@ -268,10 +312,15 @@ async def ytdownv2(_, ctx: Message, strings):
     anim_task = asyncio.create_task(animate_processing(progress_msg, PROCESS_TEXT, stop_event))
     try:
         info = await yt_extract(url)
+    except DownloadError as err:
+        return await progress_msg.edit_text(f"<code>{format_ytdl_error(err)}</code>", parse_mode=ParseMode.HTML)
+    except asyncio.TimeoutError:
+        return await progress_msg.edit_text("❌ Request timed out while contacting yt-dlp source.")
     except Exception as err:
-        stop_event.set()
-        await anim_task
-        return await progress_msg.edit_text(f"{strings('err_parse')}\n\n<code>{err}</code>", parse_mode=ParseMode.HTML)
+        return await progress_msg.edit_text(
+            f"{strings('err_parse')}\n\n<code>{format_ytdl_error(err)}</code>",
+            parse_mode=ParseMode.HTML,
+        )
     finally:
         stop_event.set()
         await anim_task
@@ -452,10 +501,16 @@ async def ytdl_download_callback(self: Client, cq: CallbackQuery, strings):
         return await cq.edit_message_caption("❌ Download cancelled.")
     except DownloadError as err:
         ACTIVE_DOWNLOADS.pop(job_id, None)
-        return await cq.edit_message_caption(f"❌ Download failed: <code>{err}</code>", parse_mode=ParseMode.HTML)
+        return await cq.edit_message_caption(
+            f"❌ Download failed: <code>{format_ytdl_error(err)}</code>",
+            parse_mode=ParseMode.HTML,
+        )
     except Exception as err:
         ACTIVE_DOWNLOADS.pop(job_id, None)
-        return await cq.edit_message_caption(f"❌ Download error: <code>{err}</code>", parse_mode=ParseMode.HTML)
+        return await cq.edit_message_caption(
+            f"❌ Download error: <code>{format_ytdl_error(err)}</code>",
+            parse_mode=ParseMode.HTML,
+        )
 
     if "%" in downloaded_file or not os.path.exists(downloaded_file):
         downloaded_file = resolve_downloaded_file(output_dir, "", option.get("ext"))
