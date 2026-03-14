@@ -1155,7 +1155,7 @@ async def imdb_id_callback(self: Client, query: CallbackQuery):
                         ),
                         reply_markup=markup,
                     )
-                except (PhotoInvalidDimensions, WebpageMediaEmpty):
+                except (MediaEmpty, PhotoInvalidDimensions, WebpageMediaEmpty):
                     poster = thumb.replace(".jpg", "._V1_UX360.jpg")
                     await self.edit_message_media(
                         chat_id=query.message.chat.id,
@@ -1166,7 +1166,6 @@ async def imdb_id_callback(self: Client, query: CallbackQuery):
                         reply_markup=markup,
                     )
                 except (
-                    MediaEmpty,
                     MediaCaptionTooLong,
                     WebpageCurlFailed,
                     MessageNotModified,
@@ -1548,7 +1547,7 @@ async def imdb_en_callback(self: Client, query: CallbackQuery):
                         ),
                         reply_markup=markup,
                     )
-                except (PhotoInvalidDimensions, WebpageMediaEmpty):
+                except (MediaEmpty, PhotoInvalidDimensions, WebpageMediaEmpty):
                     poster = thumb.replace(".jpg", "._V1_UX360.jpg")
                     await self.edit_message_media(
                         chat_id=query.message.chat.id,
@@ -1561,7 +1560,6 @@ async def imdb_en_callback(self: Client, query: CallbackQuery):
                 except (
                     MediaCaptionTooLong,
                     WebpageCurlFailed,
-                    MediaEmpty,
                     MessageNotModified,
                 ):
                     await query.message.edit(
