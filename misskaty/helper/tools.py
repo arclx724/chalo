@@ -137,31 +137,99 @@ def get_provider(url):
 
 
 async def search_jw(movie_name: str, locale: Union[str, None] = "ID"):
-    m_t_ = ""
-    try:
-        response = (
-            await fetch.get(
-                f"https://yasirapi.eu.org/justwatch?q={movie_name}&locale={locale}"
-            )
-        ).json()
-    except:
-        return m_t_
-    if not response.get("results"):
-        LOGGER.error("JustWatch API Error or got Rate Limited.")
-        return m_t_
-    for item in response["results"]["data"]["popularTitles"]["edges"]:
-        if item["node"]["content"]["title"] == movie_name:
-            t_m_ = []
-            for offer in item["node"].get("offers", []):
-                url = offer["standardWebURL"]
-                if url not in t_m_:
-                    p_o = get_provider(url)
-                    m_t_ += f"<a href='{url}'>{p_o}</a> | "
-                t_m_.append(url)
-        if m_t_ != "":
-            m_t_ = m_t_[:-2].strip()
-        break
-    return m_t_
+    def normalize_locale(raw_locale: Union[str, None]):
+        locale_alias = {"EN": "US"}
+        if raw_locale is None:
+            return "ID"
+        return locale_alias.get(str(raw_locale).upper(), str(raw_locale).upper())
+
+    async def get_edges(target_locale: str):
+        language = "id" if target_locale == "ID" else "en"
+        query = """
+            query GetSuggestedTitles($country: Country!, $language: Language!, $first: Int!, $filter: TitleFilter) {
+              popularTitles(country: $country, first: $first, filter: $filter) {
+                edges {
+                  node {
+                    content(country: $country, language: $language) {
+                      title
+                    }
+                    offers(country: $country, platform: WEB) {
+                      standardWebURL
+                    }
+                  }
+                }
+              }
+            }
+        """
+        payload = {
+            "query": query,
+            "variables": {
+                "country": target_locale,
+                "language": language,
+                "first": 8,
+                "filter": {"searchQuery": movie_name},
+            },
+        }
+        try:
+            response = (await fetch.post("https://apis.justwatch.com/graphql", json=payload)).json()
+        except Exception:
+            return None
+
+        if not isinstance(response, dict):
+            return None
+
+        if errors := response.get("errors"):
+            LOGGER.error("JustWatch returned errors for locale %s: %s", target_locale, errors)
+
+        data = response.get("data")
+        if not isinstance(data, dict):
+            return None
+        popular_titles = data.get("popularTitles")
+        if not isinstance(popular_titles, dict):
+            return None
+        edges = popular_titles.get("edges")
+        if not isinstance(edges, list):
+            return None
+        return edges
+
+    normalized_locale = normalize_locale(locale)
+    fallback_locale = "US" if normalized_locale == "ID" else "ID"
+
+    edges = await get_edges(normalized_locale)
+    if edges is None and fallback_locale != normalized_locale:
+        LOGGER.warning(
+            "JustWatch data empty for locale %s, retrying fallback locale %s.",
+            normalized_locale,
+            fallback_locale,
+        )
+        edges = await get_edges(fallback_locale)
+
+    if edges is None:
+        LOGGER.error(
+            "JustWatch API Error or got Rate Limited for locale %s (fallback %s).",
+            normalized_locale,
+            fallback_locale,
+        )
+        return ""
+
+    providers = []
+    for item in edges:
+        node = item.get("node", {}) if isinstance(item, dict) else {}
+        content = node.get("content", {}) if isinstance(node, dict) else {}
+        if content.get("title") == movie_name:
+            seen_urls = []
+            for offer in node.get("offers", []):
+                if not isinstance(offer, dict):
+                    continue
+                url = offer.get("standardWebURL")
+                if not url or url in seen_urls:
+                    continue
+                p_o = get_provider(url)
+                providers.append(f"<a href='{url}'>{p_o}</a>")
+                seen_urls.append(url)
+            break
+
+    return " | ".join(providers)
 
 
 def isValidURL(str):
