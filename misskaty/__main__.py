@@ -15,7 +15,6 @@ from logging import getLogger
 from pyrogram import __version__, idle
 from pyrogram.raw.all import layer
 
-from database import dbname
 from misskaty import (
     BOT_NAME,
     BOT_USERNAME,
@@ -27,7 +26,6 @@ from misskaty import (
     run_wsgi
 )
 from misskaty.plugins import ALL_MODULES
-from misskaty.plugins.web_scraper import web
 from misskaty.vars import OWNER_ID, USER_SESSION
 from utils import auto_clean
 
@@ -73,10 +71,6 @@ async def start_bot():
         LOGGER.error(str(e))
     scheduler.start()
     asyncio.create_task(run_wsgi())
-    if "web" not in await dbname.list_collection_names():
-        webdb = dbname["web"]
-        for key, value in web.items():
-            await webdb.insert_one({key: value})
     if os.path.exists("restart.pickle"):
         with open("restart.pickle", "rb") as status:
             chat_id, message_id = pickle.load(status)
