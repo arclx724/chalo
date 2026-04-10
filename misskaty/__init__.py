@@ -24,7 +24,6 @@ from misskaty.vars import (
     DATABASE_URI,
     PORT,
     TZ,
-    USER_SESSION,
 )
 
 basicConfig(
@@ -69,15 +68,6 @@ app = Client(
 app.db = AsyncClient(DATABASE_URI)
 app.log = getLogger("MissKaty")
 
-# Pyrogram UserBot Client
-user = Client(
-    "YasirUBot",
-    session_string=USER_SESSION,
-    mongodb=dict(connection=AsyncClient(DATABASE_URI), remove_peers=False),
-    sleep_threshold=180,
-    app_version="MissKaty Ubot",
-)
-
 jobstores = {
     "default": MongoDBJobStore(
         client=MongoClient(DATABASE_URI), database=DATABASE_NAME, collection="nightmode"
@@ -94,18 +84,3 @@ app.start()
 BOT_ID = app.me.id
 BOT_NAME = app.me.first_name
 BOT_USERNAME = app.me.username
-if USER_SESSION:
-    try:
-        user.start()
-        UBOT_ID = user.me.id
-        UBOT_NAME = user.me.first_name
-        UBOT_USERNAME = user.me.username
-    except Exception as e:
-        app.log.error(f"Error while starting UBot: {e}")
-        UBOT_ID = None
-        UBOT_NAME = None
-        UBOT_USERNAME = None
-else:
-    UBOT_ID = None
-    UBOT_NAME = None
-    UBOT_USERNAME = None
