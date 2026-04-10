@@ -19,7 +19,7 @@ from misskaty import (
     BOT_NAME,
     BOT_USERNAME,
     HELPABLE,
-    UBOT_NAME,
+
     app,
     get_event_loop,
     scheduler,
