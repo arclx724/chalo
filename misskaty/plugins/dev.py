@@ -54,7 +54,7 @@ from pyrogram.types import (
 
 from database.gban_db import add_gban_user, is_gbanned_user, remove_gban_user
 from database.users_chats_db import db
-from misskaty import BOT_NAME, app, botStartTime, misskaty_version, user
+from misskaty import BOT_NAME, app, botStartTime, misskaty_version
 from misskaty.core.decorator import new_task
 from misskaty.helper.eval_helper import format_exception, meval
 from misskaty.helper.functions import extract_user, extract_user_and_reason
