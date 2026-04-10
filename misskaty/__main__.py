@@ -19,14 +19,13 @@ from misskaty import (
     BOT_NAME,
     BOT_USERNAME,
     HELPABLE,
-
     app,
     get_event_loop,
     scheduler,
     run_wsgi
 )
 from misskaty.plugins import ALL_MODULES
-from misskaty.vars import OWNER_ID, USER_SESSION
+from misskaty.vars import OWNER_ID
 from utils import auto_clean
 
 LOGGER = getLogger("MissKaty")
@@ -57,16 +56,10 @@ async def start_bot():
     LOGGER.info("[INFO]: BOT STARTED AS @%s!", BOT_USERNAME)
     try:
         LOGGER.info("[INFO]: SENDING ONLINE STATUS")
-        if USER_SESSION:
-            await app.send_message(
-                OWNER_ID,
-                f"USERBOT AND BOT STARTED with Pyrogram v{__version__}..\nUserBot: {UBOT_NAME}\nBot: {BOT_NAME}\n\nwith Pyrogram v{__version__} (Layer {layer}) started on @{BOT_USERNAME}.\n\n<code>{bot_modules}</code>",
-            )
-        else:
-            await app.send_message(
-                OWNER_ID,
-                f"BOT STARTED with Pyrogram v{__version__}..\nBot: {BOT_NAME}\n\nwith Pyrogram v{__version__} (Layer {layer}) started on @{BOT_USERNAME}.\n\n<code>{bot_modules}</code>",
-            )
+        await app.send_message(
+            OWNER_ID,
+            f"BOT STARTED with Pyrogram v{__version__}..\nBot: {BOT_NAME}\n\nwith Pyrogram v{__version__} (Layer {layer}) started on @{BOT_USERNAME}.\n\n<code>{bot_modules}</code>",
+        )
     except Exception as e:
         LOGGER.error(str(e))
     scheduler.start()
